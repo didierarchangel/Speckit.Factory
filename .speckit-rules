@@ -1,0 +1,9 @@
+# 🛡️ SPECKIT.FACTORY - LOI DE GOUVERNANCE
+Ce projet est régi par la Doctrine Speckit.Factory. 
+Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
+1. Consulter `Constitution/CONSTITUTION.md` avant toute action.
+2. Ne jamais modifier le code sans passer par le cycle : Analyse -> Implémentation -> Audit.
+3. Utiliser les commandes CLI `speckit` pour les phases de planification.
+4. Respecter strictement la segmentation des dossiers Task1/Task2 pour la traçabilité.
+
+**L'IA de l'IDE ne doit pas tenter de tout générer en un bloc.**

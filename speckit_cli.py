@@ -133,9 +133,43 @@ Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
 """
     rules_path.write_text(rules_content, encoding="utf-8")
 
+    # Création du fichier .env.example
+    setup_env_logic(target_path)
+
     click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
+    click.echo("💡 Fichier `.env.example` créé. Renommez-le en `.env` et ajoutez vos clés API.")
     click.echo("👉 Prochaine étape : `speckit specify 'votre demande ici'`")
+
+def setup_env_logic(target_path: Path):
+    """Logique de création du fichier .env.example."""
+    env_example_path = target_path / ".env.example"
+    content = """# 🔑 Speckit.Factory - Clés API
+# Renommez ce fichier en .env pour activer les IA
+
+# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
+# Get one at https://aistudio.google.com/app/apikey
+GOOGLE_API_KEY=votre_cle_ici
+
+# Anthropic (Claude)
+ANTHROPIC_API_KEY=votre_cle_ici
+
+# OpenAI (GPT / Copilot)
+OPENAI_API_KEY=votre_cle_ici
+"""
+    env_example_path.write_text(content, encoding="utf-8")
+
+@cli.command("setup-env")
+@click.option('--path', default=".", help="Chemin où créer le fichier .env.example")
+def setup_env(path):
+    """Crée un fichier .env.example template dans le dossier spécifié."""
+    target_path = Path(path)
+    if not target_path.exists():
+        click.echo(f"❌ Le dossier {target_path} n'existe pas.")
+        return
+    
+    setup_env_logic(target_path)
+    click.echo(f"✅ Fichier .env.example créé dans : {target_path.absolute()}")
 
 def get_llm(provider: str = None, model_name: str = None):
     """Factory pour obtenir le modèle LLM selon le provider (auto-sélection si vide)."""

@@ -1,13 +1,10 @@
 {
     "version": "1.1",
-    "constitution_hash": "49a17df8105563e8bc2841f1c36350c4bef68da1417e240ef85f5283565a5a2f",
-    "core_hashes": {
-        "protocols/constitution_rules.md": "005ed2fcc66ed21d820f036afdbf683b114441f77d470abd24adf1ff63f76a4a",
-        "protocols/task_protocol.md": "eeaf790b1c990948dab6d16529fbc8e444f651795cb7ddd485b4b09b157ab4e3",
-        "protocols/verification_rules.md": "d13f16b6bb63bb0f95c4b50672bd11c1084b9137e03eb6702dc945910edf00ce",
-        "templates/activation.md": "b414f378ce6282da086ae18deb9451d54ee3cd9f5a1fa5fd5ffae583cf5f28c8"
-    },
+    "constitution_hash": "",
     "completed_tasks": [],
     "completed_specs": [],
-    "active_tasks": {}
+    "active_tasks": {},
+    "selected_ais": [
+        "google"
+    ]
 }
