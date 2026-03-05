@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Dict
 
+import time
+
 logger = logging.getLogger(__name__)
 
 class SpecValidator:
@@ -49,9 +51,19 @@ class SpecValidator:
         try:
             with open(self.lock_file, "r", encoding="utf-8") as f:
                 lock_data = json.load(f)
-        except json.JSONDecodeError:
-            logger.error("Le fichier .spec-lock.json est corrompu (JSON invalide).")
+        except (json.JSONDecodeError, FileNotFoundError):
+            logger.error("Le fichier .spec-lock.json est corrompu ou inaccessible.")
             return False
+            
+        # 0. Vérification des verrous de tâches (Concurrency protection)
+        active_tasks = lock_data.get("active_tasks", {})
+        # On nettoie les verrous expirés (ex: plus de 30 min)
+        now = time.time()
+        expired_tasks = [tid for tid, timestamp in active_tasks.items() if now - timestamp > 1800]
+        if expired_tasks:
+            for tid in expired_tasks:
+                del active_tasks[tid]
+            self._save_lock_data(lock_data)
             
         # 1. Vérification de la Constitution
         stored_const_hash = lock_data.get("constitution_hash", "")
@@ -74,7 +86,74 @@ class SpecValidator:
                     logger.error(f"🚨 VIOLATION SYSTEME : Le fichier critique '{rel_key}' a été altéré !")
                     return False
             
+            
         return True
+
+    def is_task_locked(self, task_id: str) -> bool:
+        """Vérifie si une tâche est actuellement verrouillée par un autre processus."""
+        if not self.lock_file.exists():
+            return False
+        try:
+            with open(self.lock_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            active_tasks = data.get("active_tasks", {})
+            if task_id in active_tasks:
+                # Vérification de l'expiration (30 min)
+                if time.time() - active_tasks[task_id] < 1800:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def acquire_task_lock(self, task_id: str) -> bool:
+        """Tente de verrouiller une tâche pour exécution."""
+        if not self.lock_file.exists():
+            self.lock_version() # Initialise si absent
+            
+        try:
+            with open(self.lock_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            active_tasks = data.setdefault("active_tasks", {})
+            
+            if task_id in active_tasks:
+                # Vérifier si expiré
+                if time.time() - active_tasks[task_id] < 1800:
+                    logger.warning(f"🔒 Tâche {task_id} déjà en cours d'exécution.")
+                    return False
+            
+            active_tasks[task_id] = time.time()
+            self._save_lock_data(data)
+            logger.info(f"🔒 Tâche {task_id} verrouillée pour exécution.")
+            return True
+        except Exception as e:
+            logger.error(f"Erreur lors du verrouillage de la tâche : {e}")
+            return False
+
+    def release_task_lock(self, task_id: str):
+        """Libère le verrou sur une tâche."""
+        if not self.lock_file.exists():
+            return
+            
+        try:
+            with open(self.lock_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            active_tasks = data.get("active_tasks", {})
+            if task_id in active_tasks:
+                del active_tasks[task_id]
+                self._save_lock_data(data)
+                logger.info(f"🔓 Tâche {task_id} déverrouillée.")
+        except Exception as e:
+            logger.error(f"Erreur lors du déverrouillage de la tâche : {e}")
+
+    def _save_lock_data(self, data: dict):
+        """Sauvegarde atomique du fichier lock."""
+        try:
+            with open(self.lock_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            logger.error(f"Erreur de sauvegarde lock : {e}")
 
     def lock_version(self):
         """Met à jour les empreintes dans .spec-lock.json après une validation globale."""
@@ -85,7 +164,8 @@ class SpecValidator:
             "constitution_hash": self.calculate_hash(self.constitution_path),
             "core_hashes": {},
             "completed_tasks": [],
-            "completed_specs": []
+            "completed_specs": [],
+            "active_tasks": {}
         }
         
         # Sauvegarde des historiques existants si le fichier est déjà là
@@ -95,6 +175,7 @@ class SpecValidator:
                     old_data = json.load(f)
                     data["completed_tasks"] = old_data.get("completed_tasks", [])
                     data["completed_specs"] = old_data.get("completed_specs", [])
+                    data["active_tasks"] = old_data.get("active_tasks", {})
             except json.JSONDecodeError:
                 logger.warning("Le fichier .spec-lock.json existant est corrompu. Il sera écrasé.")
 

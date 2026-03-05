@@ -8,5 +8,6 @@
         "templates/activation.md": "b414f378ce6282da086ae18deb9451d54ee3cd9f5a1fa5fd5ffae583cf5f28c8"
     },
     "completed_tasks": [],
-    "completed_specs": []
+    "completed_specs": [],
+    "active_tasks": {}
 }

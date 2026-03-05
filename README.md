@@ -104,6 +104,23 @@ Avant toute exécution de `--task`, le **SpecValidator** vérifie l'intégrité 
 
 ---
 
+## 🤖 Architecture Multi-IA Simultanée
+
+Contrairement à GitHub Spec-Kit qui est souvent limité à une seule instance ou un seul modèle à la fois, **Speckit.Factory permet une collaboration SIMULTANÉE entre plusieurs IA**.
+
+Parce que le framework repose sur un système de fichiers strict et un verrou d'intégrité (`.spec-lock.json`), vous pouvez ouvrir votre projet dans **3 IA différentes au même moment** (ex: Gemini, Claude et Codex) sans conflit :
+
+*   **Synchronisation par le Fichier** : Toutes les IA lisent la même `CONSTITUTION.md`. Si vous modifiez un principe dans une IA, les autres en héritent immédiatement dès la prochaine lecture.
+*   **Division du Travail en Parallèle** : Vous pouvez demander à **Claude** de travailler sur une spécification dans `Task_Function1` pendant que **Gemini** implémente une tâche technique dans `Task1`, le tout coordonné par le `spec-lock.json`.
+*   **Intelligence Collective** : Utilisez la force de chaque modèle selon la tâche :
+    *   **Gemini** pour l'analyse de code massive.
+    *   **Claude** pour la rédaction de spécifications précises.
+    *   **Codex / Copilot** pour l'écriture de code rapide.
+
+**Speckit.Factory n'est pas un outil pour UNE IA, c'est un protocole pour TOUTES vos IA travaillant ensemble.**
+
+---
+
 ## 🎓 Ce Que Vous Allez Apprendre
 
 Après avoir utilisé Speckit.Factory :
@@ -112,6 +129,7 @@ Après avoir utilisé Speckit.Factory :
 ✅ Comment imposer des règles d'IA strictes grâce au pattern "Constitutional"
 ✅ Comment verrouiller le contexte de Prompting pour éviter les hallucinations
 ✅ Comment maintenir un registre `.spec-lock.json` immuable
+✅ Comment orchestrer **simultanément** plusieurs IA (Multi-Agent Sync) sans perdre la trace du projet
 
 ---
 
