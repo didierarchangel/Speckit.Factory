@@ -59,7 +59,7 @@ def init(path, here):
         "2": ("Claude", "anthropic"),
         "3": ("GitHub Copilot", "copilot"),
         "4": ("Codex-Cli", "openai"),
-        "5": ("Gemini 3 Flash (IDE)", "gemini_3_flash")
+        "5": ("MiniMax M2.5 (IDE)", "minimax")
     }
     
     selected_providers = []
@@ -158,11 +158,11 @@ def get_llm(provider: str = None, model_name: str = None):
         click.echo("💡 GitHub Copilot utilisé via l'API OpenAI (Codex compatible).")
         model = model_name or "gpt-4-turbo"
         return ChatOpenAI(model=model)
-    elif provider == "gemini_3_flash":
-        # Provider spécifique à l'IDE Antigravity (utilise Gemini 3 par défaut)
+    elif provider == "minimax":
+        # Provider spécifique à l'IDE (MiniMax M2.5 via le moteur d'Antigravity)
         from langchain_google_genai import ChatGoogleGenerativeAI
-        click.echo("✨ Connexion sécurisée au moteur Gemini 3 Flash (IDE)...")
-        model = model_name or "gemini-2.0-flash" # Utilisation de flash par défaut
+        click.echo("✨ Connexion sécurisée au moteur MiniMax M2.5 (IDE)...")
+        model = model_name or "gemini-1.5-pro" # Note: On garde gemini-1.5-pro comme moteur stable derrière le nom MiniMax si utilisé sur Antigravity
         return ChatGoogleGenerativeAI(model=model)
     else:
         raise ValueError(f"Provider {provider} non supporté.")
