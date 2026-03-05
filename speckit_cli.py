@@ -172,8 +172,18 @@ def get_llm(provider: str = None, model_name: str = None):
 def specify(prompt):
     """[DOCTRINE 2] Analyse une demande et produit la CONSTITUTION.md."""
     try:
-        click.echo("🧠 Analyse architecturale en cours...")
         llm = get_llm()
+        # On récupère le nom du provider pour l'affichage
+        lock_file = Path(".spec-lock.json")
+        provider_name = "inconnu"
+        if lock_file.exists():
+            with open(lock_file, "r") as f:
+                data = json.load(f)
+                selected = data.get("selected_ais", [])
+                if selected:
+                    provider_name = selected[0]
+
+        click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt)
         click.echo("\n✅ CONSTITUTION GÉNÉRÉE dans `Constitution/CONSTITUTION.md`.")
@@ -191,8 +201,17 @@ def specify(prompt):
 def plan():
     """[DOCTRINE 4] Analyse la Constitution et produit la feuille de route (etapes.md)."""
     try:
-        click.echo("🗺️ Génération de la feuille de route...")
         llm = get_llm()
+        lock_file = Path(".spec-lock.json")
+        provider_name = "inconnu"
+        if lock_file.exists():
+            with open(lock_file, "r") as f:
+                data = json.load(f)
+                selected = data.get("selected_ais", [])
+                if selected:
+                    provider_name = selected[0]
+
+        click.echo(f"🗺️ Génération de la feuille de route avec l'IA ({provider_name})...")
         manager = EtapeManager(llm)
         manager.generate_steps_from_constitution()
         click.echo("✅ FEUILLE DE ROUTE GÉNÉRÉE dans `Constitution/etapes.md`.")
