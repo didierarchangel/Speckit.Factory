@@ -184,16 +184,18 @@ def specify(prompt, provider, model):
     """[DOCTRINE 2] Analyse une demande et produit la CONSTITUTION.md."""
     try:
         llm = get_llm(provider, model)
-        # On récupère le nom du provider pour l'affichage
-        lock_file = Path(".spec-lock.json")
-        provider_name = "inconnu"
-        if lock_file.exists():
-            with open(lock_file, "r") as f:
-                data = json.load(f)
-                selected = data.get("selected_ais", [])
-                if selected:
-                    provider_name = selected[0]
-
+        # Résolution du nom du provider pour l'affichage
+        provider_name = provider
+        if not provider_name:
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                with open(lock_file, "r") as f:
+                    data = json.load(f)
+                    selected = data.get("selected_ais", [])
+                    if selected:
+                        provider_name = selected[0]
+        
+        provider_name = provider_name or "inconnu"
         click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt)
@@ -215,15 +217,17 @@ def plan(provider, model):
     """[DOCTRINE 4] Analyse la Constitution et produit la feuille de route (etapes.md)."""
     try:
         llm = get_llm(provider, model)
-        lock_file = Path(".spec-lock.json")
-        provider_name = "inconnu"
-        if lock_file.exists():
-            with open(lock_file, "r") as f:
-                data = json.load(f)
-                selected = data.get("selected_ais", [])
-                if selected:
-                    provider_name = selected[0]
+        provider_name = provider
+        if not provider_name:
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                with open(lock_file, "r") as f:
+                    data = json.load(f)
+                    selected = data.get("selected_ais", [])
+                    if selected:
+                        provider_name = selected[0]
 
+        provider_name = provider_name or "inconnu"
         click.echo(f"🗺️ Génération de la feuille de route avec l'IA ({provider_name})...")
         manager = EtapeManager(llm)
         manager.generate_steps_from_constitution()
