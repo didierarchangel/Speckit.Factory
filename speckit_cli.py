@@ -10,7 +10,15 @@ import logging
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement (.env)
-load_dotenv()
+# On cherche le .env dans le dossier courant de l'utilisateur (là où il lance la commande)
+env_path = Path(".") / ".env"
+load_dotenv(dotenv_path=env_path)
+
+if not os.environ.get("GOOGLE_API_KEY"):
+    # Fallback sur le dossier racine du script si non trouvé dans le dossier courant
+    script_env = Path(__file__).parent / ".env"
+    if script_env.exists():
+        load_dotenv(dotenv_path=script_env)
 
 from core.validator import SpecValidator
 from core.graph import SpecGraphManager
@@ -144,13 +152,14 @@ def get_llm(provider: str = None, model_name: str = None):
                 pass
     
     provider = (provider or "google").lower() # Fallback ultime et case-insensibilité
-    if provider == "google":
+    if provider in ["google", "google-flash"]:
+        if not os.environ.get("GOOGLE_API_KEY"):
+            click.echo("\n❌ ERREUR : La clé GOOGLE_API_KEY est manquante.")
+            click.echo(f"📍 Dossier actuel : {os.getcwd()}")
+            click.echo("💡 Assurez-vous d'avoir un fichier .env contenant 'GOOGLE_API_KEY=votre_cle'.")
+            
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = model_name or "gemini-1.5-pro"
-        return ChatGoogleGenerativeAI(model=model)
-    elif provider == "google-flash":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        model = model_name or "gemini-1.5-flash"
+        model = model_name or ("gemini-1.5-pro" if provider == "google" else "gemini-1.5-flash")
         return ChatGoogleGenerativeAI(model=model)
     elif provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
