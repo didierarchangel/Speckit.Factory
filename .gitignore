@@ -1,0 +1,28 @@
+# 🛡️ Speckit.Factory - Python GitIgnore
+
+# Environment variables (CRITICAL)
+.env
+.env.local
+.env.*.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/
+
+# Project specific
+.spec-lock.json
+verification-project/
+tmp_verify/

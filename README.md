@@ -151,6 +151,24 @@ C'est ici que nous discutons des évolutions, de la roadmap et que vous pouvez p
 
 ---
 
+## ⚙️ Configuration des Clés API
+
+Pour que Speckit.Factory puisse communiquer avec les IA, vous devez configurer vos clés API :
+
+1.  **Récupérez le template** : Copiez le fichier `.env.example` à la racine de votre projet vers un nouveau fichier nommé `.env`.
+    ```bash
+    cp .env.example .env
+    ```
+2.  **Remplissez vos clés** : Ouvrez le fichier `.env` et insérez vos clés (Google, Anthropic ou OpenAI).
+    ```text
+    GOOGLE_API_KEY=votre_cle_ici
+    ```
+
+> [!IMPORTANT]
+> Ne commitez **JAMAIS** votre fichier `.env` sur Git. Il est déjà ajouté au `.gitignore` par défaut pour protéger vos secrets.
+
+---
+
 ## 🛠️ Installation & Utilisation
 
 ### Méthode 1 : Utilisation directe (Recommandée - via ⚡ [uv](https://astral.sh/uv/))

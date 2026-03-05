@@ -7,6 +7,10 @@ import os
 import json
 from pathlib import Path
 import logging
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement (.env)
+load_dotenv()
 
 from core.validator import SpecValidator
 from core.graph import SpecGraphManager
@@ -59,7 +63,7 @@ def init(path, here):
         "2": ("Claude", "anthropic"),
         "3": ("GitHub Copilot", "copilot"),
         "4": ("Codex-Cli", "openai"),
-        "5": ("MiniMax M2.5 (IDE)", "minimax")
+        "5": ("Gemini 1.5 Flash (Rapide)", "google-flash")
     }
     
     selected_providers = []
@@ -144,6 +148,10 @@ def get_llm(provider: str = None, model_name: str = None):
         from langchain_google_genai import ChatGoogleGenerativeAI
         model = model_name or "gemini-1.5-pro"
         return ChatGoogleGenerativeAI(model=model)
+    elif provider == "google-flash":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model = model_name or "gemini-1.5-flash"
+        return ChatGoogleGenerativeAI(model=model)
     elif provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         model = model_name or "claude-3-5-sonnet-20240620"
@@ -159,20 +167,11 @@ def get_llm(provider: str = None, model_name: str = None):
         model = model_name or "gpt-4-turbo"
         return ChatOpenAI(model=model)
     elif provider == "minimax":
-        # Provider MiniMax M2.5 (Local via KiloCode ou autre endpoint OpenAI-compatible)
-        from langchain_openai import ChatOpenAI
-        
-        # Tentative de récupération d'un endpoint local (Default: localhost ou variable d'env)
-        base_url = os.environ.get("SPECKIT_API_BASE", "http://localhost:11434/v1") # Fallback standard local
-        api_key = os.environ.get("SPECKIT_API_KEY", "not-needed")
-        
-        click.echo(f"✨ Connexion au moteur MiniMax M2.5 (Local/KiloCode) via {base_url}...")
-        
-        return ChatOpenAI(
-            model=model_name or "minimax-m2.5",
-            openai_api_key=api_key,
-            openai_api_base=base_url
-        )
+        # Deprecated: Minimax is no longer supported directly. 
+        # Redirection vers Gemini Flash pour assurer la continuité
+        click.echo("⚠️ Provider 'minimax' obsolète. Basculement sur Gemini 1.5 Flash...")
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(model="gemini-1.5-flash")
     else:
         raise ValueError(f"Provider {provider} non supporté.")
 
