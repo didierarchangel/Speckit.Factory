@@ -23,10 +23,10 @@ Description  : Le modèle de base pour toute nouvelle Constitution.
 Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer des bibliothèques non listées ici.
 
 ### 1.1 Backend
-* **Langage** : [Ex: Python 3.12, Node.js 20, Rust]
-* **Framework Core** : [Ex: FastAPI, Express, Actix]
-* **Base de données** : [Ex: PostgreSQL 16 via SQLAlchemy, MongoDB]
-* **Authentification** : [Ex: JWT, OAuth2]
+* **Langage** : [Ex: Node.js 20, TypeScript]
+* **Framework Core** : [Ex: Express, NestJS, Fastify]
+* **Base de données** : [Ex: MongoDB via Mongoose, PostgreSQL 16 via Prisma]
+* **Authentification** : [Ex: JWT, Passport.js, NextAuth]
 
 ### 1.2 Frontend (Si applicable)
 * **Langage** : [Ex: TypeScript]
@@ -34,8 +34,8 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 * **Styling** : [Ex: Tailwind CSS, Vanilla CSS]
 
 ### 1.3 Outillage & Tests
-* **Linter/Formatter** : [Ex: Ruff, ESLint, Prettier]
-* **Tests** : [Ex: Pytest, Jest]
+* **Linter/Formatter** : [Ex: ESLint, Prettier]
+* **Tests** : [Ex: Jest, Vitest]
 
 ---
 

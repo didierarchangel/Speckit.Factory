@@ -28,7 +28,8 @@ class ConstitutionManager:
             
             La Constitution doit impérativement définir :
             1. L'Architecture (Folders, Layers)
-            2. La Stack Technique (Langages, Frameworks, DB) - SOIS PRÉCIS (versions).
+            2. La Stack Technique (Langages, Frameworks, DB) - LE BACKEND DOIT ÊTRE EN NODE.JS (SOIS PRÉCIS sur les versions).
+               - Privilégie Express ou NestJS pour le backend.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
 
