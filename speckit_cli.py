@@ -159,11 +159,20 @@ def get_llm(provider: str = None, model_name: str = None):
         model = model_name or "gpt-4-turbo"
         return ChatOpenAI(model=model)
     elif provider == "minimax":
-        # Provider spécifique à l'IDE (MiniMax M2.5 via le moteur d'Antigravity)
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        click.echo("✨ Connexion sécurisée au moteur MiniMax M2.5 (IDE)...")
-        model = model_name or "gemini-1.5-pro" # Note: On garde gemini-1.5-pro comme moteur stable derrière le nom MiniMax si utilisé sur Antigravity
-        return ChatGoogleGenerativeAI(model=model)
+        # Provider MiniMax M2.5 (Local via KiloCode ou autre endpoint OpenAI-compatible)
+        from langchain_openai import ChatOpenAI
+        
+        # Tentative de récupération d'un endpoint local (Default: localhost ou variable d'env)
+        base_url = os.environ.get("SPECKIT_API_BASE", "http://localhost:11434/v1") # Fallback standard local
+        api_key = os.environ.get("SPECKIT_API_KEY", "not-needed")
+        
+        click.echo(f"✨ Connexion au moteur MiniMax M2.5 (Local/KiloCode) via {base_url}...")
+        
+        return ChatOpenAI(
+            model=model_name or "minimax-m2.5",
+            openai_api_key=api_key,
+            openai_api_base=base_url
+        )
     else:
         raise ValueError(f"Provider {provider} non supporté.")
 
