@@ -8,15 +8,15 @@ version = "0.1.0"
 description = "Constitutional DevOps AI Framework"
 authors = [{name = "Didier KAZITALA"}]
 dependencies = [
-    "click~=8.1.7",
-    "langchain~=0.3.0",
-    "langchain-community~=0.3.0",
-    "pydantic~=2.10.0",
-    "langgraph~=0.2.0",
-    "langchain-google-genai~=2.0.0",
-    "langchain-anthropic~=0.2.0",
-    "langchain-openai~=0.2.0",
-    "python-dotenv~=1.0.1",
+    "click>=8.1.0",
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.10",
+    "pydantic>=2.0.0",
+    "langgraph>=0.0.10",
+    "langchain-google-genai",
+    "langchain-anthropic",
+    "langchain-openai",
+    "python-dotenv",
 ]
 
 [tool.setuptools]
