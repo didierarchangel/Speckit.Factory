@@ -169,10 +169,12 @@ def get_llm(provider: str = None, model_name: str = None):
 
 @cli.command()
 @click.argument('prompt')
-def specify(prompt):
+@click.option('--provider', help="Provider IA spécifique")
+@click.option('--model', help="Nom du modèle spécifique")
+def specify(prompt, provider, model):
     """[DOCTRINE 2] Analyse une demande et produit la CONSTITUTION.md."""
     try:
-        llm = get_llm()
+        llm = get_llm(provider, model)
         # On récupère le nom du provider pour l'affichage
         lock_file = Path(".spec-lock.json")
         provider_name = "inconnu"
@@ -198,10 +200,12 @@ def specify(prompt):
             click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
-def plan():
+@click.option('--provider', help="Provider IA spécifique")
+@click.option('--model', help="Nom du modèle spécifique")
+def plan(provider, model):
     """[DOCTRINE 4] Analyse la Constitution et produit la feuille de route (etapes.md)."""
     try:
-        llm = get_llm()
+        llm = get_llm(provider, model)
         lock_file = Path(".spec-lock.json")
         provider_name = "inconnu"
         if lock_file.exists():
