@@ -173,7 +173,12 @@ def specify(prompt):
         click.echo("👉 Veuillez la valider ou la modifier manuellement avant l'étape suivante.")
         click.echo("👉 Prochaine étape : `speckit plan` pour générer la feuille de route.")
     except Exception as e:
-        click.echo(f"❌ Erreur : {e}")
+        error_msg = str(e).lower()
+        if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
+            click.echo("\n⚠️  [Modal Quota Reached]")
+            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+        else:
+            click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
 def plan():
@@ -186,7 +191,12 @@ def plan():
         click.echo("✅ FEUILLE DE ROUTE GÉNÉRÉE dans `Constitution/etapes.md`.")
         click.echo("👉 Prochaine étape : `speckit run --task ID` pour commencer l'implémentation.")
     except Exception as e:
-        click.echo(f"❌ Erreur : {e}")
+        error_msg = str(e).lower()
+        if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
+            click.echo("\n⚠️  [Modal Quota Reached]")
+            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+        else:
+            click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
 def status():
