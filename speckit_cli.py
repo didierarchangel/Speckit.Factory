@@ -25,6 +25,7 @@ from core.graph import SpecGraphManager
 from core.etapes import EtapeManager
 from core.constitution_manager import ConstitutionManager
 from utils.file_manager import FileManager
+import re
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -393,14 +394,37 @@ def run(task, provider, model):
 
             # Sauvegarde des fichiers
             fm = FileManager()
-            impacted = final_state.get("impact_fichiers", [])
             code = final_state.get("code_to_verify", "")
             
-            if impacted and code:
-                # Pour l'instant on écrit dans le premier fichier mentionné
-                target_file = impacted[0].split(":")[-1].strip()
-                if fm.safe_write(target_file, code):
-                    click.echo(f"💾 Code sauvegardé dans : {target_file}")
+            if code:
+                # Regex pour détecter les blocs de fichiers
+                # Formats supportés : 
+                # // --- Fichier : path ---
+                # // Fichier : path
+                # # Fichier : path
+                file_blocks = re.split(r'(?m)^(?://|#)(?:\s*---\s*)?Fichier\s*:\s*([^\s-]+)(?:\s*---\s*)?$', code)
+                
+                if len(file_blocks) > 1:
+                    # Le premier élément est le texte avant le premier fichier (souvent vide ou intro)
+                    for i in range(1, len(file_blocks), 2):
+                        file_path = file_blocks[i].strip()
+                        file_content = file_blocks[i+1].strip()
+                        
+                        # Nettoyage si le contenu commence par des backticks (cas rare de double markdown)
+                        file_content = re.sub(r'^```\w*\n', '', file_content)
+                        file_content = re.sub(r'\n```$', '', file_content)
+                        
+                        if fm.safe_write(file_path, file_content):
+                            click.echo(f"💾 Fichier sauvegardé : {file_path}")
+                else:
+                    # Fallback sur l'ancien comportement si aucun tag n'est trouvé
+                    impacted = final_state.get("impact_fichiers", [])
+                    if impacted:
+                        target_file = impacted[0].split(":")[-1].strip()
+                        if fm.safe_write(target_file, code):
+                            click.echo(f"💾 Code sauvegardé (fallback) dans : {target_file}")
+                    else:
+                        click.echo("⚠️ Impossible de déterminer le fichier de destination.")
                 
                 # Mise à jour du statut
                 manager_etapes.mark_step_as_completed(task)
@@ -419,7 +443,7 @@ def run(task, provider, model):
                     except Exception as e:
                         logger.error(f"Erreur lors de la mise à jour du lock : {e}")
             else:
-                click.echo("⚠️ Aucun fichier impacté ou code généré trouvé.")
+                click.echo("⚠️ Aucun code généré trouvé.")
             
             click.echo(f"\n✨ Tâche {task} terminée avec succès.")
         else:
