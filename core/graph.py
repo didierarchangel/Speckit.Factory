@@ -36,6 +36,7 @@ class AgentState(TypedDict):
     points_forts: str # Points forts relevés
     alertes: str # Alertes détectées
     feedback_correction: str # Instructions si rejeté
+    terminal_diagnostics: str # Erreurs réelles du terminal (build, lint, etc.)
     
     # Gestion des erreurs et boucle
     error_count: int 
@@ -167,6 +168,7 @@ class SpecGraphManager:
                 "pending_tasks": state["pending_tasks"],
                 "analysis_output": state["analysis_output"],
                 "code_to_verify": state["code_to_verify"],
+                "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
                 "format_instructions": parser.get_format_instructions()
             })
             
@@ -211,6 +213,51 @@ class SpecGraphManager:
                 "error_count": new_error_count,
                 "last_error": error_msg
             }
+            
+    def diagnostic_node(self, state: AgentState) -> dict:
+        """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
+        logger.info("🛠️ Lancement des diagnostics réels du terminal...")
+        
+        commands = []
+        if (self.root / "package.json").exists():
+            commands.append("npm run build")
+        elif (self.root / "pyproject.toml").exists():
+            commands.append("pytest")
+            
+        if not commands:
+            logger.info("ℹ️ Aucun script de diagnostic automatisé trouvé à la racine.")
+            return {"terminal_diagnostics": "Aucun outil de diagnostic configuré."}
+            
+        diagnostics = []
+        import subprocess
+        
+        for cmd in commands:
+            logger.info(f"🏃 Exécution de : {cmd}")
+            try:
+                result = subprocess.run(
+                    cmd, 
+                    shell=True, 
+                    capture_output=True, 
+                    text=True, 
+                    cwd=str(self.root),
+                    timeout=60
+                )
+                
+                if result.returncode != 0:
+                    error_report = f"❌ ÉCHEC de [{cmd}] :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+                    diagnostics.append(error_report)
+                else:
+                    diagnostics.append(f"✅ SUCCÈS de [{cmd}]")
+                    
+            except subprocess.TimeoutExpired:
+                diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}]")
+            except Exception as e:
+                diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] : {str(e)}")
+                
+        full_report = "\n---\n".join(diagnostics)
+        logger.info("✅ Diagnostics terminés.")
+        return {"terminal_diagnostics": full_report}
+
 
     # ─── 3. Fonctions de routage (conditions) ─────────────────────────────
 
@@ -236,9 +283,11 @@ class SpecGraphManager:
         self.graph_builder.add_node("verify_node", self.verify_node)
 
         # Transitions (flux)
+        self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
         self.graph_builder.add_edge(START, "analysis_node")
         self.graph_builder.add_edge("analysis_node", "impl_node")
-        self.graph_builder.add_edge("impl_node", "verify_node")
+        self.graph_builder.add_edge("impl_node", "diagnostic_node")
+        self.graph_builder.add_edge("diagnostic_node", "verify_node")
 
         # Branchement conditionnel (Boucle de correction)
         self.graph_builder.add_conditional_edges(

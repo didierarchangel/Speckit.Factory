@@ -28,6 +28,9 @@ Prends en compte les éléments suivants pour ton développement :
 3. PLAN DE L'ANALYSTE (RÉFÉRENCE ABSOLUE) :
 {analysis_output}
 
+# DIAGNOSTICS DU TERMINAL (ERREURS RÉELLES)
+{terminal_diagnostics}
+
 # TÂCHE À RÉALISER
 Implémente la tâche suivante : "{target_task}"
 

@@ -426,6 +426,7 @@ def run(task, provider, model):
             "code_to_verify": "",
             "validation_status": "",
             "feedback_correction": "",
+            "terminal_diagnostics": "",
             "error_count": 0,
             "last_error": ""
         }

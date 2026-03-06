@@ -31,6 +31,9 @@ Prends en compte les éléments suivants pour ton audit :
 # CODE À VÉRIFIER (Cible de l'Audit)
 {code_to_verify}
 
+# RÉSULTATS DU TERMINAL (DIAGNOSTICS RÉELS)
+{terminal_diagnostics}
+
 # RÈGLES D'OR DE L'AUDITEUR
 - Règle 1 : La Constitution est absolue. Tout framework/librairie non listé est un rejet immédiat.
 - Règle 2 : Sécurité en premier. Vérifie l'Auth, la validation des inputs, les injections.
