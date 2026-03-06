@@ -397,12 +397,9 @@ def run(task, provider, model):
             code = final_state.get("code_to_verify", "")
             
             if code:
-                # Regex pour détecter les blocs de fichiers
-                # Formats supportés : 
-                # // --- Fichier : path ---
-                # // Fichier : path
-                # # Fichier : path
-                file_blocks = re.split(r'(?m)^(?://|#)(?:\s*---\s*)?Fichier\s*:\s*([^\s-]+)(?:\s*---\s*)?$', code)
+                # Regex robuste pour détecter les blocs de fichiers (gère les commentaires après le nom)
+                # Format: // Fichier : path (comment)
+                file_blocks = re.split(r'(?m)^(?://|#)(?:\s*---\s*)?Fichier\s*:\s*([^\s-]+).*?(?:\s*---\s*)?$', code)
                 
                 if len(file_blocks) > 1:
                     # Le premier élément est le texte avant le premier fichier (souvent vide ou intro)
@@ -410,21 +407,27 @@ def run(task, provider, model):
                         file_path = file_blocks[i].strip()
                         file_content = file_blocks[i+1].strip()
                         
-                        # Nettoyage si le contenu commence par des backticks (cas rare de double markdown)
+                        # Nettoyage si le contenu commence par des backticks
                         file_content = re.sub(r'^```\w*\n', '', file_content)
                         file_content = re.sub(r'\n```$', '', file_content)
                         
                         if fm.safe_write(file_path, file_content):
                             click.echo(f"💾 Fichier sauvegardé : {file_path}")
                 else:
-                    # Fallback sur l'ancien comportement si aucun tag n'est trouvé
+                    # Fallback intelligent sur l'ancien comportement
                     impacted = final_state.get("impact_fichiers", [])
-                    if impacted:
-                        target_file = impacted[0].split(":")[-1].strip()
-                        if fm.safe_write(target_file, code):
-                            click.echo(f"💾 Code sauvegardé (fallback) dans : {target_file}")
+                    # On cherche le premier qui n'est pas un dossier (ne finit pas par / ou \)
+                    target_file = None
+                    for imp in impacted:
+                        clean_path = imp.split(":")[-1].strip()
+                        if not (clean_path.endswith('/') or clean_path.endswith('\\')):
+                            target_file = clean_path
+                            break
+                    
+                    if target_file and fm.safe_write(target_file, code):
+                        click.echo(f"💾 Code sauvegardé (fallback) dans : {target_file}")
                     else:
-                        click.echo("⚠️ Impossible de déterminer le fichier de destination.")
+                        click.echo("⚠️ Impossible de déterminer un fichier de destination valide (échec parsing + pas de fichier cible trouvé).")
                 
                 # Mise à jour du statut
                 manager_etapes.mark_step_as_completed(task)

@@ -57,7 +57,16 @@ class FileManager:
             logger.info(f"🛑 Écriture annulée : {relative_path} existe déjà et overwrite=False.")
             return False
 
+        if relative_path.endswith('/') or relative_path.endswith('\\'):
+            logger.error(f"🛑 Tentative d'écriture sur un dossier comme si c'était un fichier : {relative_path}")
+            return False
+
         try:
+            # Sécurité supplémentaire : si un dossier existe avec ce nom de fichier, on bloque
+            if file_path.exists() and file_path.is_dir():
+                logger.error(f"❌ Collision détectée : {relative_path} est un dossier, pas un fichier.")
+                return False
+
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")
             logger.debug(f"✅ Fichier écrit avec succès : {relative_path}")
