@@ -48,12 +48,12 @@ Ton audit doit être impitoyable et le verdict binaire (APPROUVÉ ou REJETÉ).
 
 # EXEMPLE DE RÉPONSE ATTENDUE (MODÈLE ABSOLU)
 ```json
-{
+{{
   "score_conformite": 95,
   "verdict_final": "APPROUVÉ",
   "points_forts": "Description des points forts",
   "alertes": "Description des alertes ou 'Aucune'",
   "action_corrective": ""
-}
+}}
 ```
 *(Note: Si le verdict est REJETÉ, le champ `action_corrective` doit contenir des directives techniques claires)*

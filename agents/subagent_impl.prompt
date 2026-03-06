@@ -57,10 +57,10 @@ Dans le champ "code" du JSON :
 
 # EXEMPLE DE RÉPONSE ATTENDUE (MODÈLE ABSOLU)
 ```json
-{
+{{
   "resume": "Brève description des changements",
   "impact_fichiers": ["src/app.ts", "package.json"],
-  "code": "// Fichier : src/app.ts\nconsole.log(\"Hello World\");\n\n// Fichier : package.json\n{\n  \"name\": \"my-app\",\n  \"scripts\": {\n    \"test\": \"jest\"\n  }\n}"
-}
+  "code": "// Fichier : src/app.ts\nconsole.log(\"Hello World\");\n\n// Fichier : package.json\n{{\n  \"name\": \"my-app\",\n  \"scripts\": {{\n    \"test\": \"jest\"\n  }}\n}}"
+}}
 ```
 *(Note: Dans le champ "code", assure-toi que les sauts de ligne sont représentés par `\n` et les guillemets par `\"`)*
