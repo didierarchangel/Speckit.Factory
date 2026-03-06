@@ -30,7 +30,11 @@ class AgentState(TypedDict):
     # Résultats des nœuds
     analysis_output: str
     code_to_verify: str
+    impact_fichiers: List[str] # Liste des fichiers impactés
     validation_status: str # "APPROUVÉ" ou "REJETÉ"
+    score: str # Score de l'auditeur
+    points_forts: str # Points forts relevés
+    alertes: str # Alertes détectées
     feedback_correction: str # Instructions si rejeté
 
 
@@ -120,7 +124,10 @@ class SpecGraphManager:
                 "format_instructions": parser.get_format_instructions()
             })
             logger.info("✅ Implémentation terminée.")
-            return {"code_to_verify": result["code"]}
+            return {
+                "code_to_verify": result["code"],
+                "impact_fichiers": result.get("impact_fichiers", [])
+            }
         except Exception as e:
             logger.error(f"❌ Erreur d'implémentation : {e}")
             return {"code_to_verify": "ERREUR FATALE"}
@@ -152,10 +159,22 @@ class SpecGraphManager:
             
             if status == "APPROUVÉ":
                 logger.info(f"✅ Code APPROUVÉ par l'Auditeur (Score: {result['score_conformite']}).")
-                return {"validation_status": "APPROUVÉ", "feedback_correction": ""}
+                return {
+                    "validation_status": "APPROUVÉ", 
+                    "score": result['score_conformite'],
+                    "points_forts": result.get('points_forts', ''),
+                    "alertes": result.get('alertes', 'Aucune alerte.'),
+                    "feedback_correction": ""
+                }
             else:
                 logger.warning(f"❌ Code REJETÉ par l'Auditeur. Raison : {result['alertes']}")
-                return {"validation_status": "REJETÉ", "feedback_correction": result["action_corrective"]}
+                return {
+                    "validation_status": "REJETÉ", 
+                    "score": result['score_conformite'],
+                    "points_forts": result.get('points_forts', ''),
+                    "alertes": result.get('alertes', ''),
+                    "feedback_correction": result["action_corrective"]
+                }
                 
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'Audit : {e}")

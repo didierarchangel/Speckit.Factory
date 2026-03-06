@@ -26,3 +26,9 @@ build/
 .spec-lock.json
 verification-project/
 tmp_verify/
+
+# Structure.md
+STRUCTURE.md
+
+# .env
+.env

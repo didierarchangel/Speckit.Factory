@@ -24,6 +24,7 @@ from core.validator import SpecValidator
 from core.graph import SpecGraphManager
 from core.etapes import EtapeManager
 from core.constitution_manager import ConstitutionManager
+from utils.file_manager import FileManager
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -374,11 +375,60 @@ def run(task, provider, model):
         }
         
         # Exécution du graphe
+        final_state = initial_state
         for output in graph_manager.app.stream(initial_state):
             for node_name, result in output.items():
                 click.echo(f"📍 Nœud [{node_name}] terminé.")
+                final_state.update(result)
         
-        click.echo(f"✨ Tâche {task} terminée avec succès.")
+        # 5. Traitement du résultat final
+        if final_state.get("validation_status") == "APPROUVÉ":
+            click.echo("\n" + "="*50)
+            click.echo("🛡️  RAPPORT D'AUDIT SPECKIT")
+            click.echo("="*50)
+            click.echo(f"⭐ Score : {final_state.get('score', 'N/A')}")
+            click.echo(f"✅ Points forts : {final_state.get('points_forts', 'N/A')}")
+            click.echo(f"⚠️  Alertes : {final_state.get('alertes', 'Aucune')}")
+            click.echo("="*50 + "\n")
+
+            # Sauvegarde des fichiers
+            fm = FileManager()
+            impacted = final_state.get("impact_fichiers", [])
+            code = final_state.get("code_to_verify", "")
+            
+            if impacted and code:
+                # Pour l'instant on écrit dans le premier fichier mentionné
+                target_file = impacted[0].split(":")[-1].strip()
+                if fm.safe_write(target_file, code):
+                    click.echo(f"💾 Code sauvegardé dans : {target_file}")
+                
+                # Mise à jour du statut
+                manager_etapes.mark_step_as_completed(task)
+                click.echo(f"✅ Tâche {task} marquée comme terminée dans etapes.md")
+                
+                # Mise à jour du verrou .spec-lock.json
+                lock_file = Path(".spec-lock.json")
+                if lock_file.exists():
+                    try:
+                        with open(lock_file, "r") as f:
+                            data = json.load(f)
+                        if task not in data.get("completed_tasks", []):
+                            data.setdefault("completed_tasks", []).append(task)
+                        with open(lock_file, "w") as f:
+                            json.dump(data, f, indent=4)
+                    except Exception as e:
+                        logger.error(f"Erreur lors de la mise à jour du lock : {e}")
+            else:
+                click.echo("⚠️ Aucun fichier impacté ou code généré trouvé.")
+            
+            click.echo(f"\n✨ Tâche {task} terminée avec succès.")
+        else:
+            click.echo("\n" + "!"*50)
+            click.echo("❌ ÉCHEC DE L'AUDIT")
+            click.echo("!"*50)
+            click.echo(f"Raison : {final_state.get('alertes', 'Inconnue')}")
+            click.echo(f"Action corrective : {final_state.get('feedback_correction', 'N/A')}")
+            click.echo("!"*50 + "\n")
         
     except Exception as e:
         error_msg = str(e).lower()
