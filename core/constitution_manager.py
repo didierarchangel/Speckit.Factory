@@ -47,6 +47,12 @@ class ConstitutionManager:
                - Note : Si React ou Next.js sont choisis, ils DOIVENT impérativement utiliser Vite.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
+            5. L'Outillage et les Tests : Tu DOIS impérativement inclure Jest, Supertest (Backend) et Vitest (Frontend si Vite). Ne les oublie pas !
+
+            ATTENTION AU FORMATAGE MARKDOWN :
+            - Remplis les champs entre crochets du template (ex: [Ex: Jest...])
+            - Ne crée pas de doublons de titres (ex: pas de double ## ou ---)
+            - Sois propre et concis dans la génération.
 
             Utilise ce template comme base de structure :
             {template}
