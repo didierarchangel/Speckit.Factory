@@ -61,6 +61,31 @@ class SpecGraphManager:
             raise FileNotFoundError(f"Prompt introuvable : {path}")
         return path.read_text(encoding="utf-8")
 
+    def _safe_parse_json(self, content: str, pydantic_object) -> dict:
+        """Nettoie et parse le JSON, même s'il est entouré de backticks Markdown."""
+        cleaned = content.strip()
+        
+        # 1. Nettoyage des backticks Markdown (```json ... ```)
+        if "```" in cleaned:
+            import re
+            # Regex pour capturer le contenu entre les triples backticks
+            match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
+            if match:
+                cleaned = match.group(1).strip()
+            else:
+                # Si pas de fermeture, on essaie de nettoyer le début
+                cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                cleaned = re.sub(r"\s*```$", "", cleaned)
+        
+        # 2. Parsing via LangChain JsonOutputParser
+        parser = JsonOutputParser(pydantic_object=pydantic_object)
+        try:
+            return parser.parse(cleaned)
+        except Exception as e:
+            logger.error(f"Échec du parsing JSON final : {str(e)}")
+            logger.debug(f"Contenu problématique : {cleaned}")
+            raise
+
     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
 
     def analysis_node(self, state: AgentState) -> dict:
@@ -76,10 +101,10 @@ class SpecGraphManager:
         prompt_text += "\n\n{format_instructions}"
         prompt = ChatPromptTemplate.from_template(prompt_text)
         
-        chain = prompt | self.model | parser
+        chain = prompt | self.model | StrOutputParser()
         
         try:
-            result = chain.invoke({
+            raw_output = chain.invoke({
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
@@ -87,6 +112,7 @@ class SpecGraphManager:
                 "target_task": state["target_task"],
                 "format_instructions": parser.get_format_instructions()
             })
+            result = self._safe_parse_json(raw_output, SubagentAnalysisOutput)
             # On convertit le dict JSON en string formatée pour l'injecter au noeud suivant
             analysis_str = (
                 f"Impact: {result['impact']}\n"
@@ -120,10 +146,10 @@ class SpecGraphManager:
         prompt_text += "\n\n{format_instructions}"
         
         prompt = ChatPromptTemplate.from_template(prompt_text)
-        chain = prompt | self.model | parser
+        chain = prompt | self.model | StrOutputParser()
         
         try:
-            result = chain.invoke({
+            raw_output = chain.invoke({
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
@@ -134,6 +160,7 @@ class SpecGraphManager:
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "format_instructions": parser.get_format_instructions()
             })
+            result = self._safe_parse_json(raw_output, SubagentImplOutput)
             logger.info("✅ Implémentation terminée.")
             return {
                 "code_to_verify": result["code"],
@@ -159,10 +186,10 @@ class SpecGraphManager:
         prompt_text += "\n\n{format_instructions}"
         
         prompt = ChatPromptTemplate.from_template(prompt_text)
-        chain = prompt | self.model | parser
+        chain = prompt | self.model | StrOutputParser()
         
         try:
-            result = chain.invoke({
+            raw_output = chain.invoke({
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
@@ -172,6 +199,7 @@ class SpecGraphManager:
                 "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
                 "format_instructions": parser.get_format_instructions()
             })
+            result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
             status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
