@@ -185,16 +185,17 @@ build/
 
     click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
-    click.echo("💡 Fichier `.env.example` créé. Renommez-le en `.env` et ajoutez vos clés API.")
+    click.echo("💡 Fichiers `.env.example` et `.env` créés. N'oubliez pas d'ajouter vos vraies clés API dans `.env`.")
     click.echo("👉 Prochaine étape : `speckit specify 'votre demande ici'`")
 
 def setup_env_logic(target_path: Path):
-    """Logique de création du fichier .env.example (TEMPLATE UNIQUEMENT)."""
-    # On s'assure qu'on ne copie JAMAIS les clés du .env principal
+    """Logique de création du fichier .env.example et .env (TEMPLATE)."""
     env_example_path = target_path / ".env.example"
+    env_path = target_path / ".env"
+    
     content = """# 🔑 Speckit.Factory - Clés API (Template)
-# Renommez ce fichier en .env pour activer les IA
-# NE JAMAIS COMMITTER VOTRE VRAI FICHIER .env
+# Ajoutez vos clés API ici pour activer les IA
+# NE JAMAIS COMMITTER VOTRE VRAI FICHIER .env (il est dans le .gitignore)
 
 # Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite)
 # Get one at https://aistudio.google.com/app/apikey
@@ -207,6 +208,10 @@ ANTHROPIC_API_KEY=votre_cle_ici
 OPENAI_API_KEY=votre_cle_ici
 """
     env_example_path.write_text(content, encoding="utf-8")
+    
+    # Créer le .env s'il n'existe pas déjà pour faciliter la vie de l'utilisateur
+    if not env_path.exists():
+        env_path.write_text(content, encoding="utf-8")
 
 @cli.command("setup-env")
 @click.option('--path', default=".", help="Chemin où créer le fichier .env.example")
