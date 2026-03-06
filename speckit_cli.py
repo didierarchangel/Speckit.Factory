@@ -29,7 +29,13 @@ import re
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("Speckit")
+logger = logging.getLogger(__name__)
+
+# Désactiver les logs verbeux des bibliothèques externes (comme httpx et google_genai)
+# pour ne pas polluer le terminal de l'utilisateur avec les retries 503
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("google_genai").setLevel(logging.WARNING)
+logging.getLogger("langchain_core").setLevel(logging.ERROR)
 
 # Configuration des chemins par défaut
 DEFAULT_PROJECT_NAME = "SpecKit-App"
