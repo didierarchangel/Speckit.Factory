@@ -270,6 +270,58 @@ Si Backend Node/TS, tu dois inclure :
 - [ ] `tsconfig.json` : `include` est `["src/**/*"]`.
 - [ ] `build` script est `"build": "tsc"`.
 
+# RÈGLE CRITIQUE : TSCONFIG IMMUTABLE
+
+Si tu dois créer ou corriger un fichier `tsconfig.json`,
+tu dois utiliser EXACTEMENT cette configuration.
+
+Aucune autre option n'est autorisée.
+
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}
+
+# INTERDICTION d'utiliser :
+- baseUrl
+- paths
+- alias imports
+- moduleResolution custom
+- experimentalDecorators
+
+# IMMUTABILITÉ DES CONFIGS
+
+Ne modifie JAMAIS :
+
+- tsconfig.json
+- package.json
+
+sauf si :
+
+1. une erreur du terminal l'indique explicitement
+OU
+2. la tâche demande explicitement de modifier ce fichier
+
+#VALIDATION OBLIGATOIRE JSON
+
+Avant de produire un fichier JSON :
+
+1. vérifier que toutes les accolades sont fermées
+2. vérifier que toutes les virgules sont valides
+3. vérifier que toutes les clés ont une valeur
+
+Si le JSON n'est pas valide, reconstruire le fichier.
+
 # INSTRUCTIONS DE SORTIE
 
 Tu dois répondre en DEUX parties.
