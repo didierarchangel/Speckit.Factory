@@ -1,6 +1,0 @@
-agents
-core
-protocols
-speckit_cli
-templates
-utils

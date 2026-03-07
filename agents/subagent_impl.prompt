@@ -70,12 +70,17 @@ Implémente la tâche suivante : "{target_task}"
   * **Mongoose import** : Utilise TOUJOURS `import * as mongoose from 'mongoose'` (et non `import mongoose from 'mongoose'`) pour éviter TS2503.
   * **req.user dans app.ts** : Dans la déclaration globale de type Express, utilise `user?: any` (et non `user?: IUser`) pour éviter le conflit TS2717 avec d'autres modules qui définissent `req.user`.
   * **Codes HTTP** : Les erreurs métier doivent retourner les bons codes HTTP : 401 (Unauthorized) pour identifiants invalides, 409 (Conflict) pour email déjà existant, jamais 500 pour des erreurs métier.
-  * **tsconfig.json backend EXACT** : Quand tu génères ou modifies le `backend/tsconfig.json`, utilise EXACTEMENT ce contenu (copie-le tel quel) : `{{ "compilerOptions": {{ "target": "ES2022", "module": "commonjs", "lib": ["ES2022"], "outDir": "./dist", "rootDir": "./src", "strict": true, "esModuleInterop": true, "allowSyntheticDefaultImports": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true, "resolveJsonModule": true, "declaration": true, "declarationMap": true, "sourceMap": true }}, "include": ["src/**/*"], "exclude": ["node_modules", "dist", "**/*.test.ts"] }}`. Le champ `include` DOIT être `["src/**/*"]` — JAMAIS `["src/*.test.ts"]` ou autre variante.
+  * **tsconfig.json backend EXACT** : Quand tu génères ou modifies le `backend/tsconfig.json`, utilise EXACTEMENT ce contenu (copie-le tel quel, mais ajoute l'en-tête de traçabilité SI `current_step` est `02_config_backend_typescript`) : 
+      ```
+      // @SPEC-KIT-TASK: 02_config_backend_typescript
+      { "compilerOptions": { "target": "ES2022", "module": "commonjs", "lib": ["ES2022"], "outDir": "./dist", "rootDir": "./src", "strict": true, "esModuleInterop": true, "allowSyntheticDefaultImports": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true, "resolveJsonModule": true, "declaration": true, "declarationMap": true, "sourceMap": true }, "include": ["src/**/*"], "exclude": ["node_modules", "dist", "**/*.test.ts"] }
+      ```
+      Le champ `include` DOIT être `["src/**/*"]` — NE JAMAIS restreindre 'include' aux seuls fichiers .test.ts..
   * **package.json racine** : Le script `build` à la racine du projet NE DOIT PAS appeler `tsc` directement. Il doit faire : `"build": "cd backend && npm run build"` ou être absent.
 - Règle 12 : 📄 **INTÉGRITÉ DES FICHIERS JSON**. Les fichiers `package.json`, `tsconfig.json` et tout fichier `.json` DOIVENT être du JSON pur et valide. 
   * **JAMAIS de commentaires** (`/** ... */`, `//`, `/* */`) dans un fichier JSON. Le format JSON ne supporte PAS les commentaires.
-  * **JAMAIS d'en-tête de traçabilité @SPEC-KIT-TASK** dans un fichier `.json`. L'en-tête de traçabilité du projet ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
-  * Le JSON doit commencer par `{{` et finir par `}}`, sans aucun autre caractère autour.
+  * **EXCEPTION TRACABILITÉ** : Si `current_step` est `02_config_backend_typescript`, tu DOIS ajouter l'en-tête `// @SPEC-KIT-TASK: 02_config_backend_typescript` tout en haut des fichiers de configuration (`tsconfig.json`, `.eslintrc.js`, etc.). C'est l'unique exception où un commentaire/en-tête est autorisé dans un fichier JSON.
+  * Le JSON doit commencer par `{` (ou l'en-tête cité plus haut) et finir par `}`, sans aucun autre caractère autour.
 - Règle 13 : 📁 **PRÉFIXE DE CHEMIN OBLIGATOIRE**. Si le projet a un dossier `backend/` et/ou `frontend/`, TOUS les chemins de fichiers que tu génères DOIVENT inclure ce préfixe. Ne génère JAMAIS `// Fichier : src/app.ts` si le fichier doit aller dans le backend. Génère `// Fichier : backend/src/app.ts`. Même chose pour le frontend : `// Fichier : frontend/src/App.tsx`. Un chemin sans préfixe écrira le fichier à la racine du projet et causera une erreur TS18003.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
