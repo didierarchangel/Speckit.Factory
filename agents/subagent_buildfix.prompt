@@ -66,8 +66,7 @@ Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
 - Si une erreur vient du tsconfig, tu dois ADAPTER le code source ou le package.json pour qu'ils soient compatibles avec la configuration imposée, mais ne touche pas au fichier tsconfig lui-même.
 
 # PERMISSION
-- Le fichier `tsconfig.json` peut être modifié UNIQUEMENT pour résoudre une erreur de build critique (ex: TS18003). 
-- Tu dois conserver les options `target: ES2022` et `module: CommonJS` du Golden Template sauf si l'erreur terminale indique explicitement une incompatibilité.
+- Seul le fichier `package.json` peut être reconstruit entièrement si nécessaire pour restaurer un build fonctionnel.
 
 # CAS PARTICULIER : TS18003
 Si une erreur mentionne `TS18003`, cela signifie que TypeScript ne trouve pas les fichiers source.
@@ -89,9 +88,11 @@ est syntaxiquement invalide ou structurellement incorrect.
 
 Dans ce cas :
 
-1. IGNORER la configuration actuelle
-2. RECONSTRUIRE complètement tsconfig.json
-3. Utiliser une configuration minimale stable
+Dans ce cas :
+
+1. SIGNALER l'erreur au système.
+2. NE PAS modifier le `tsconfig.json` (il sera restauré automatiquement par le Golden Template).
+3. Corriger le `package.json` ou l'arborescence des fichiers.
 
 
 # INTERDICTION d'utiliser :
@@ -144,31 +145,16 @@ Alors :
 C'est ici que tu mets TOUT le code concaténé, avec les en-têtes `// Fichier : chemin/vers/fichier`.
 
 # EXEMPLE DE RÉPONSE ATTENDUE
-```json
-{{
-  "resume": "Correction du tsconfig.json pour inclure le dossier src et ajout de @types/express",
-  "impact_fichiers": ["backend/tsconfig.json", "backend/package.json"]
-}}
-```
-
-```code
-// Fichier : backend/tsconfig.json
-{{
-  "compilerOptions": {{
-    "target": "ES2022",
-    "module": "commonjs",
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true
-  }},
-  "include": ["src/**/*"]
-}}
-
 // Fichier : backend/package.json
 {{
   "name": "backend",
+  "version": "1.0.0",
+  "scripts": {{
+    "build": "tsc"
+  }},
+  "dependencies": {{
+    "express": "4.19.2"
+  }},
   "devDependencies": {{
     "typescript": "5.4.5",
     "@types/express": "4.17.21"

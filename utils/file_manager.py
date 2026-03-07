@@ -61,27 +61,21 @@ class FileManager:
             logger.error(f"🛑 Tentative d'écriture sur un dossier comme si c'était un fichier : {relative_path}")
             return False
 
-        # Golden Template Override for tsconfig.json
+        # Golden Template Override for tsconfig.json (STRICT)
         if "tsconfig.json" in str(file_path).lower():
-            # On ne force le template QUE si le fichier n'existe pas encore
-            # ou si on veut vraiment imposer une règle stricte au démarrage.
-            if not file_path.exists(): 
-                example_path = self.base_path / "tsconfig.json.example"
-                
-                if not example_path.exists():
-                    factory_root = Path(__file__).parent.parent
-                    example_path = factory_root / "tsconfig.json.example"
+            example_path = self.base_path / "tsconfig.json.example"
+            if not example_path.exists():
+                factory_root = Path(__file__).parent.parent
+                example_path = factory_root / "tsconfig.json.example"
 
-                if example_path.exists():
-                    logger.info(f"✨ Initialisation Golden Template pour {relative_path}")
-                    try:
-                        content = example_path.read_text(encoding="utf-8")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur lecture Golden Template : {e}")
+            if example_path.exists():
+                logger.info(f"✨ Golden Template: Enforcing {example_path} for {relative_path}")
+                try:
+                    content = example_path.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"❌ Erreur lecture Golden Template : {e}")
             else:
-                # Si le fichier existe déjà, on laisse passer l'écriture de l'IA
-                # car elle est probablement en train de corriger un bug de build.
-                logger.debug(f"ℹ️ {relative_path} existe déjà, on laisse l'IA appliquer ses corrections.")
+                logger.warning(f"⚠️ Aucun Golden Template trouvé pour {relative_path}")
 
         try:
             # Sécurité supplémentaire : si un dossier existe avec ce nom de fichier, on bloque
