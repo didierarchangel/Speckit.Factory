@@ -146,10 +146,10 @@ def init(path, here):
             "module": "CommonJS",
             "rootDir": "./src",
             "outDir": "./dist",
-            "strict": true,
-            "esModuleInterop": true,
-            "skipLibCheck": true,
-            "forceConsistentCasingInFileNames": true
+            "strict": True,
+            "esModuleInterop": True,
+            "skipLibCheck": True,
+            "forceConsistentCasingInFileNames": True
         },
         "include": ["src/**/*"],
         "exclude": ["node_modules", "dist", "tests"]
