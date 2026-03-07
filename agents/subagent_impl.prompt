@@ -207,26 +207,9 @@ Jamais :
 
 RÈGLE 7.1 : COHÉRENCE SCRIPTS / DÉPENDANCES
 
-Chaque commande utilisée dans "scripts" doit correspondre
-à un outil installé dans devDependencies.
-
-Exemples obligatoires :
-
-tsc → typescript
-jest → jest
-eslint → eslint
-tsc-watch → tsc-watch
-
-Si un script utilise un outil absent du package.json,
-tu DOIS ajouter cette dépendance dans devDependencies
-avec une version fixe.
-
-Exemple :
-
-"devDependencies": {{
-  "typescript": "5.4.5",
-  "tsc-watch": "6.0.0"
-}}
+Chaque commande utilisée dans "scripts" (ex: `tsc`, `jest`, `eslint`) doit correspondre à un outil installé dans `devDependencies`. 
+**Interdiction formelle** d'ajouter un script si l'outil n'est pas déjà autorisé dans la Constitution.
+Si un outil autorisé est utilisé en script mais absent du `package.json`, tu DOIS l'ajouter dans `devDependencies` avec une version fixe.
 
 Règle 8 : INTERDICTION HORS CONSTITUTION
 
@@ -251,11 +234,9 @@ Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 3.  **Imports et Sync** : Si tu importes une lib (ex: `cors`, `morgan`), elle DOIT être dans `package.json`. NE JAMAIS importer une lib "par défaut" si elle n'est pas dans la liste des dépendances.
 4.  **Golden Template** : Le fichier `tsconfig.json` est géré par un template système. Ne tente pas de modifier ses options de base (`rootDir`, `include`, `target`) sous peine de bloquer le build.
 
-Règle 13 : STACK BACKEND STANDARD (TS)
+Règle 13 : STACK TECHNIQUE (STRICT)
 
-Si Backend Node/TS, tu dois inclure :
-- dependencies : `express`, `mongoose` (si Mongo), `jsonwebtoken` (si auth).
-- devDependencies : `typescript`, `@types/node`, `@types/express`, `tsc-watch`, `eslint`, `prettier`, `jest`, `ts-jest`, `supertest`.
+Tu n'as aucune "liberté de confort". Tu ne dois installer que ce qui est explicitement listé dans la Constitution ou requis par une erreur de build critique pour une lib déjà autorisée (ex: @types).
 
 # PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 

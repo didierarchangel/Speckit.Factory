@@ -127,18 +127,12 @@ Tu dois fournir un JSON valide contenant les métadonnées de ton intervention.
 
 CAS CRITIQUE : MODULE NOT FOUND
 
-Si TypeScript indique :
+Si TypeScript indique : `Cannot find module 'lib-name'` :
 
-Cannot find module 'express'
-Cannot find module 'mongoose'
-Cannot find module '@types/node'
-
-Alors :
-
-1. vérifier que la dépendance existe dans package.json
-2. si elle est absente → l'ajouter
-3. utiliser une version fixe
-4. ajouter les types correspondants (@types/*)
+1. vérifier que la dépendance existe dans la Constitution.
+2. si elle est autorisée mais absente du package.json → l'ajouter.
+3. utiliser une version fixe.
+4. ajouter les types correspondants (@types/*) si autorisé.
 
 **PARTIE 2 : LE CODE CORRIGÉ (HORS DU JSON)**
 ⚠️ **RÈGLE CRITIQUE** : Le code complet CORRIGÉ doit être fourni en dehors du JSON, dans un bloc markdown dédié ` ```code ... ``` `.
