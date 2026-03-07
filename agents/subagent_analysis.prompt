@@ -34,6 +34,7 @@ Prends en compte les éléments suivants pour ton analyse :
 - Règle 1 : Tu ne peux PAS modifier une tâche déjà présente dans l'historique de réalisation.
 - Règle 2 : Tu ne peux PAS ajouter de dépendances technologiques qui ne sont pas explicitement listées dans la Constitution.
 - Règle 3 : Tu ne peux PAS proposer une architecture différente de celle validée. Si une technologie est imposée (ex: React, FastAPI), tu dois t'y tenir.
+- Règle 4 : Précision de Configuration. Si la tâche implique des fichiers de configuration (TSConfig, ESLint, Vite), ton découpage en sous-tâches doit spécifier les chemins de globbing exacts (ex: include, exclude) pour éviter toute ambiguïté lors de l'implémentation.
 
 # INSTRUCTIONS DE SORTIE
 Tu dois impérativement respecter le schéma JSON fourni. 
