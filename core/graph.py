@@ -352,7 +352,7 @@ class SpecGraphManager:
         
         code_map = {{
             "file_tree": [],
-            "semantics": {{}}
+            "semantics": {}
         }}
         
         # Extensions à scanner pour la sémantique
