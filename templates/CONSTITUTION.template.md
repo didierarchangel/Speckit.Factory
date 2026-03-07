@@ -34,10 +34,10 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 * **Routage** : [Ex: react-router-dom (^6.22.3)]
 * **Styling** : [Ex: Tailwind CSS, Vanilla CSS]
 
-### 1.3 Outillage & Tests (Préférer des versions fixes)
+### 1.3 Outillage & Tests (VERSIONS FIXES OBLIGATOIRES)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]
-* **Tests** : [Ex: Jest (^29.7.0), Vitest, Supertest (pour API)]
-
+* **Tests** : [Ex: Jest (29.7.0), Vitest, Supertest (pour API)]
+* **Note** : Toutes les dépendances (Core, Dev, Outillage) DOIVENT utiliser des versions fixes sans préfixe `^` ou `~`.
 ---
 
 ## 2. RÈGLES D'ARCHITECTURE (LE SANCTUAIRE)

@@ -47,7 +47,7 @@ Implémente la tâche suivante : "{target_task}"
   * Si tu es à une étape "Initialisation" (Setup, Structure, Routing de base), tu AS LE DROIT de générer des composants vides (Stubs) ou des routes "Hello World" sans implémenter des tests complexes, mais structure bien le code.
   * Si tu es à une étape avancée (Implémentation métier), tu DOIS générer des tests unitaires concrets et ne plus utiliser de placeholders.
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
-- Règle 7 : 📦 **SYNCHRONISATION PACKAGE.JSON**. Si tu ajoutes un `import` d'une bibliothèque tierce, tu DOIS impérativement l'ajouter à la section `dependencies` ou `devDependencies` du `package.json` correspondant.
+- Règle 7 : 📦 **SYNCHRONISATION PACKAGE.JSON**. Si tu ajoutes un `import` d'une bibliothèque tierce, tu DOIS impérativement l'ajouter à la section `dependencies` ou `devDependencies` du `package.json` correspondant. **IMPORTANT** : Utilise TOUJOURS des versions fixes (ex: `"express": "4.19.2"`) et JAMAIS de plages de versions (ex: `^4.19.2`) pour garantir la reproductibilité exigée par l'Auditeur.
 - Règle 8 : 🚫 **INTERDICTION JOI / HORS-CONSTITUTION**. N'utilise JAMAIS de bibliothèques comme `joi` si la Constitution spécifie `class-validator`. Tiens-en toi STRICTEMENT à la stack technique listée. L'utilisation d'une lib non-listée est une faute grave.
 - Règle 9 : ⚡ **VITE & TYPESCRIPT**. Si tu initialises ou configures un frontend avec Vite + TypeScript, fais très attention aux fichiers de configuration TypeScript (`tsconfig.json`). 
   * Soit tu génères un `tsconfig.json` standard pur (SANS bloc `"references": [{{ "path": "./tsconfig.node.json" }}]`).
@@ -82,6 +82,7 @@ Implémente la tâche suivante : "{target_task}"
   * **EXCEPTION TRACABILITÉ** : Si `current_step` est `02_config_backend_typescript`, tu DOIS ajouter l'en-tête `// @SPEC-KIT-TASK: 02_config_backend_typescript` tout en haut des fichiers de configuration (`tsconfig.json`, `.eslintrc.js`, etc.). C'est l'unique exception où un commentaire/en-tête est autorisé dans un fichier JSON.
   * Le JSON doit commencer par `{` (ou l'en-tête cité plus haut) et finir par `}`, sans aucun autre caractère autour.
 - Règle 13 : 📁 **PRÉFIXE DE CHEMIN OBLIGATOIRE**. Si le projet a un dossier `backend/` et/ou `frontend/`, TOUS les chemins de fichiers que tu génères DOIVENT inclure ce préfixe. Ne génère JAMAIS `// Fichier : src/app.ts` si le fichier doit aller dans le backend. Génère `// Fichier : backend/src/app.ts`. Même chose pour le frontend : `// Fichier : frontend/src/App.tsx`. Un chemin sans préfixe écrira le fichier à la racine du projet et causera une erreur TS18003.
+- Règle 14 : 🌐 **COUVERTURE MULTI-ENVIRONNEMENT**. Si le titre ou la description de `current_step` mentionne à la fois "Frontend" et "Backend" (ou "Projet" de manière globale), tu DOIS t'assurer de générer ou mettre à jour les infrastructures des DEUX environnements (ex: les deux `package.json`) dans la même tâche si nécessaire, pour éviter un blocage à l'audit.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
