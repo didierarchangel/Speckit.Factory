@@ -356,46 +356,83 @@ class SpecGraphManager:
                     except Exception as e:
                         diagnostics.append(f"❌ ERREUR lors de npm install dans {dir_name}: {str(e)}")
                 
-                cmd = "npm run build"
-                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
-                try:
-                    result = subprocess.run(
-                        cmd, 
-                        shell=True, 
-                        capture_output=True, 
-                        text=True, 
-                        cwd=str(target_dir),
-                        timeout=90
-                    )
-                    
-                    if result.returncode != 0:
-                        # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
-                        if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
-                            diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
-                        else:
-                            error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-                            diagnostics.append(error_report)
-                    else:
-                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                # Vérifier la présence de fichiers sources pour éviter de crasher les étapes de "Setup"
+                import os
+                has_source = False
+                src_path = target_dir / "src"
+                if src_path.exists() and any(src_path.iterdir()):
+                    has_source = True
+                else:
+                    try:
+                        for f in os.listdir(target_dir):
+                            if os.path.isfile(target_dir / f) and f.endswith((".ts", ".js", ".tsx", ".jsx", ".vue")):
+                                if not f.endswith(".config.js") and not f.endswith(".config.ts") and not f.startswith("jest"):
+                                    has_source = True
+                                    break
+                    except Exception:
+                        pass
+                
+                if not has_source:
+                    logger.info(f"⏭️ Aucun fichier source métier détecté dans {dir_name}, build ignoré.")
+                    diagnostics.append(f"ℹ️ Aucun fichier source métier détecté dans {dir_name}, build ignoré pour cette étape d'initialisation.")
+                else:
+                    cmd = "npm run build"
+                    logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
+                    try:
+                        result = subprocess.run(
+                            cmd, 
+                            shell=True, 
+                            capture_output=True, 
+                            text=True, 
+                            cwd=str(target_dir),
+                            timeout=90
+                        )
                         
-                except subprocess.TimeoutExpired:
-                    diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
-                except Exception as e:
-                    diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
+                        if result.returncode != 0:
+                            # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
+                            if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
+                                diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
+                            else:
+                                error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+                                diagnostics.append(error_report)
+                        else:
+                            diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                            
+                    except subprocess.TimeoutExpired:
+                        diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
+                    except Exception as e:
+                        diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
 
             if (target_dir / "pyproject.toml").exists() or (target_dir / "requirements.txt").exists():
                 found_something = True
                 dir_name = target_dir.name if target_dir.name else "racine"
-                cmd = "pytest"
-                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
-                try:
-                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
-                    if result.returncode != 0:
-                        diagnostics.append(f"❌ ÉCHEC de [{cmd}] dans {dir_name}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-                    else:
-                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
-                except Exception as e:
-                    diagnostics.append(f"❌ ERREUR exécutant [{cmd}] dans {dir_name}: {str(e)}")
+                
+                import os
+                has_tests = False
+                if (target_dir / "tests").exists() and any((target_dir / "tests").iterdir()):
+                    has_tests = True
+                else:
+                    try:
+                        for f in os.listdir(target_dir):
+                            if f.startswith("test_") and f.endswith(".py"):
+                                has_tests = True
+                                break
+                    except:
+                        pass
+                
+                if not has_tests:
+                    diagnostics.append(f"ℹ️ Aucun test détecté dans {dir_name}, pytest ignoré.")
+                else:
+                    cmd = "pytest"
+                    logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
+                    try:
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
+                        if result.returncode != 0:
+                            diagnostics.append(f"❌ ÉCHEC de [{cmd}] dans {dir_name}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+                        else:
+                            diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                    except Exception as e:
+                        diagnostics.append(f"❌ ERREUR exécutant [{cmd}] dans {dir_name}: {str(e)}")
             
         if not found_something:
             logger.info("ℹ️ Aucun script de diagnostic automatisé trouvé (ni package.json, ni Python config).")
