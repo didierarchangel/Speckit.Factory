@@ -239,7 +239,8 @@ Si la tâche implique `tsconfig.json`, tu dois respecter ces règles :
 1.  **Chemins Internes** : Les chemins *dans* le fichier (`include`, `rootDir`) sont relatifs à l'emplacement du `tsconfig.json`.
     *   Exemple : `"include": ["src/**/*"]` (Correct car `src` est à côté du config).
     *   Interdit : `"include": ["backend/src/**/*"]` (Mauvais car redondant).
-2.  **Globbing Global** : `"include": ["src/**/*"]` est OBLIGATOIRE. Interdiction de restreindre à `src*.spec.ts`.
+2.  **Globbing Global** : `"include": ["src/**/*"]` est OBLIGATOIRE. 
+
 
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
