@@ -345,7 +345,7 @@ class SpecGraphManager:
         # 0. Écrire le code web généré sur le disque AVANT de lancer les tests
         from utils.file_manager import FileManager
         import re
-        fm = FileManager(base_dir=str(self.root))
+        fm = FileManager(base_path=str(self.root))
         code = state.get("code_to_verify", "")
         if code:
             pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
