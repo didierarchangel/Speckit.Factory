@@ -145,6 +145,51 @@ C'est ici que nous discutons des évolutions, de la roadmap et que vous pouvez p
 
 ---
 
+## 🔧 Dépannage : Corriger une Étape Incomplète
+
+Si une étape a été marquée comme terminée (`[x]`) alors que certaines sous-tâches n'ont pas été réalisées, vous pouvez la **réinitialiser manuellement** pour la relancer.
+
+### Étape 1 : Décocher l'étape dans `etapes.md`
+
+Ouvrez `Constitution/etapes.md` dans votre projet et modifiez le header de l'étape concernée :
+
+```diff
+-## [x] 01_backend_setup : Configuration initiale du backend
++## [ ] 01_backend_setup : Configuration initiale du backend
+```
+
+Décochez également les sous-tâches manquantes :
+
+```diff
+-- [x] Créer un fichier `backend/.env` de base
++- [ ] Créer un fichier `backend/.env` de base
+-- [x] Créer un fichier `backend/.gitignore`
++- [ ] Créer un fichier `backend/.gitignore`
+```
+
+> [!TIP]
+> Vous pouvez laisser les sous-tâches déjà réalisées cochées `[x]`. Seules les `[ ]` seront traitées au prochain lancement.
+
+### Étape 2 : Retirer la tâche du verrou
+
+Ouvrez `.spec-lock.json` à la racine du projet et retirez l'ID de la tâche de la liste `completed_tasks` :
+
+```diff
+  "completed_tasks": [
+-     "01_backend_setup"
+  ]
+```
+
+### Étape 3 : Relancer la tâche
+
+```bash
+speckit run --task 01_backend_setup
+```
+
+L'IA reprendra le travail sur les sous-tâches non-cochées et l'Auditeur vérifiera que **chaque livrable** est bien présent avant d'approuver.
+
+---
+
 ## ⚙️ Configuration des Clés API
 
 Pour que Speckit.Factory puisse communiquer avec les IA, vous devez configurer vos clés API :
