@@ -13,7 +13,7 @@ class ConstitutionManager:
         self.constitution_path = self.root / "Constitution" / "CONSTITUTION.md"
         
         # Charger le template de base
-        self.template_path = Path(__file__).parent.parent / "templates" / "CONSTITUTION.template.md"
+        self.template_path = Path(__file__).parent / "templates" / "CONSTITUTION.template.md"
 
     def generate_constitution(self, user_request: str) -> str:
         """Produit la Constitution (Architecture, Standards, Stack) à partir d'une demande utilisateur."""

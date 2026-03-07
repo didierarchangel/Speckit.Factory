@@ -26,7 +26,7 @@ class SpecValidator:
             self.framework_root / "protocols" / "constitution_rules.md",
             self.framework_root / "protocols" / "task_protocol.md",
             self.framework_root / "protocols" / "verification_rules.md",
-            self.framework_root / "templates" / "activation.md"
+            self.framework_root / "core" / "templates" / "activation.md"
         ]
 
     def calculate_hash(self, file_path: Path) -> str:
