@@ -49,6 +49,7 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
 - Règle 7 : 📦 **SYNCHRONISATION PACKAGE.JSON**. Si tu ajoutes un `import` d'une bibliothèque tierce, tu DOIS impérativement l'ajouter à la section `dependencies` ou `devDependencies` du `package.json` correspondant.
 - Règle 8 : 🚫 **INTERDICTION JOI / HORS-CONSTITUTION**. N'utilise JAMAIS de bibliothèques comme `joi` si la Constitution spécifie `class-validator`. Tiens-en toi STRICTEMENT à la stack technique listée. L'utilisation d'une lib non-listée est une faute grave.
+- Règle 9 : ⚡ **VITE & TYPESCRIPT**. Si tu initialises ou configures un frontend avec Vite + TypeScript, tu DOIS impérativement générer le fichier `tsconfig.node.json` (avec "composite": true et "include": ["vite.config.ts"]) en plus du `tsconfig.json` principal, sinon le build échouera. C'est obligatoire.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
