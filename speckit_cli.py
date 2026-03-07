@@ -184,12 +184,19 @@ build/
         click.echo("✅ Fichier `.gitignore` par défaut créé.")
 
     # Injection du tsconfig.json.example (Golden Template)
+    import shutil
     factory_root = Path(__file__).parent
     tsconfig_example_source = factory_root / "tsconfig.json.example"
+    
     if tsconfig_example_source.exists():
         tsconfig_example_dest = target_path / "tsconfig.json.example"
-        shutil.copy(str(tsconfig_example_source), str(tsconfig_example_dest))
-        click.echo("✅ Template `tsconfig.json.example` injecté à la racine.")
+        try:
+            shutil.copy(str(tsconfig_example_source), str(tsconfig_example_dest))
+            click.echo(f"✅ Template `tsconfig.json.example` injecté dans : {target_path.absolute()}")
+        except Exception as e:
+            click.echo(f"⚠️ Erreur lors de l'injection du template : {e}")
+    else:
+        click.echo("⚠️ Source `tsconfig.json.example` introuvable dans la Factory.")
 
     click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
