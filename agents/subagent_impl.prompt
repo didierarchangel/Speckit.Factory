@@ -35,6 +35,9 @@ Prends en compte les éléments suivants pour ton développement :
 # TÂCHE À RÉALISER
 Implémente la tâche suivante : "{target_task}"
 
+# INSTRUCTION SUPPLÉMENTAIRE DE L'UTILISATEUR
+{user_instruction}
+
 # RÈGLES D'OR (ZÉRO HALLUCINATION)
 - Règle 1 : Ne modifie JAMAIS le code existant relatif à l'historique validé sans instruction explicite de l'Analyste.
 - Règle 2 : Interdiction formelle d'utiliser des bibliothèques, dépendances ou frameworks non mentionnés dans la Constitution.

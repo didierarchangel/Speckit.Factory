@@ -35,6 +35,10 @@ Prends en compte les éléments suivants pour ton audit :
 # RÉSULTATS DU TERMINAL (DIAGNOSTICS RÉELS)
 {terminal_diagnostics}
 
+# INSTRUCTION SUPPLÉMENTAIRE DE L'UTILISATEUR (POUR INFORMATION IMPORTANTE)
+L'utilisateur a donné cette directive spécifique à l'implémenteur :
+{user_instruction}
+
 # RÈGLES D'OR DE L'AUDITEUR
 - Règle 1 : La Constitution est absolue. Tout framework/librairie non listé est un rejet immédiat.
 - Règle 2 : Sécurité en premier. Vérifie l'Auth, la validation des inputs, les injections.

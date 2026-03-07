@@ -373,7 +373,8 @@ def status():
 @click.option('--task', required=True, help="ID de la tâche à exécuter (ex: 01_01)")
 @click.option('--provider', help="Provider IA (laisssez vide pour utiliser le premier choix du projet)")
 @click.option('--model', help="Nom du modèle spécifique")
-def run(task, provider, model):
+@click.option('--instruction', help="Instruction supplémentaire guidant l'implémentation (ex: 'Ne touche pas au frontend')")
+def run(task, provider, model, instruction):
     """Exécute une tâche sous verrouillage de contexte et de concurrence."""
     validator = SpecValidator()
     
@@ -428,7 +429,8 @@ def run(task, provider, model):
             "feedback_correction": "",
             "terminal_diagnostics": "",
             "error_count": 0,
-            "last_error": ""
+            "last_error": "",
+            "user_instruction": instruction or ""
         }
         
         # Exécution du graphe

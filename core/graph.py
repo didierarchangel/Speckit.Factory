@@ -42,6 +42,9 @@ class AgentState(TypedDict):
     # Gestion des erreurs et boucle
     error_count: int 
     last_error: str
+    
+    # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
+    user_instruction: str
 
 
 class SpecGraphManager:
@@ -197,6 +200,7 @@ class SpecGraphManager:
                 "completed_tasks_summary": state["completed_tasks_summary"],
                 "pending_tasks": state["pending_tasks"],
                 "target_task": state["target_task"],
+                "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentAnalysisOutput)
@@ -246,6 +250,7 @@ class SpecGraphManager:
                 "analysis_output": state["analysis_output"],
                 "feedback_correction": state.get("feedback_correction", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
+                "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
@@ -286,6 +291,7 @@ class SpecGraphManager:
                 "analysis_output": state["analysis_output"],
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
+                "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)

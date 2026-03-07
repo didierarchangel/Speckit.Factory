@@ -27,6 +27,9 @@ Prends en compte les éléments suivants pour ton analyse :
 # TÂCHE CIBLE À ANALYSER
 "{target_task}"
 
+# INSTRUCTION SUPPLÉMENTAIRE DE L'UTILISATEUR
+{user_instruction}
+
 # RÈGLES ANTI-HALLUCINATION (STRICT MÊME POUR LES GRANDS MODÈLES)
 - Règle 1 : Tu ne peux PAS modifier une tâche déjà présente dans l'historique de réalisation.
 - Règle 2 : Tu ne peux PAS ajouter de dépendances technologiques qui ne sont pas explicitement listées dans la Constitution.
