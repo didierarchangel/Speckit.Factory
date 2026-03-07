@@ -342,6 +342,28 @@ class SpecGraphManager:
         """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
         logger.info("🛠️ Lancement des diagnostics réels du terminal...")
         
+        # 0. Écrire le code web généré sur le disque AVANT de lancer les tests
+        from core.file_manager import FileManager
+        import re
+        fm = FileManager(base_dir=str(self.root))
+        code = state.get("code_to_verify", "")
+        if code:
+            pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+            file_blocks = re.split(pattern, code)
+            
+            if len(file_blocks) > 1:
+                logger.info("💾 Sauvegarde temporaire des fichiers pour permettre les diagnostics...")
+                for i in range(1, len(file_blocks), 2):
+                    file_path = file_blocks[i].strip()
+                    file_content = file_blocks[i+1].strip()
+                    
+                    # Nettoyage
+                    file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
+                    file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
+                    file_content = file_content.replace('```', '')
+                    
+                    fm.safe_write(file_path, file_content.strip())
+        
         diagnostics = []
         import subprocess
         
