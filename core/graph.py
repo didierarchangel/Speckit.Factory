@@ -74,18 +74,36 @@ class SpecGraphManager:
         cleaned = content.strip()
         result = {}
         
-        # --- EXTRACTION DU CODE MARKDOWN (NOUVEAU FORMAT) ---
+        # --- EXTRACTION DU CODE MARKDOWN (MULTI-FORMAT) ---
         import re
+        
+        # 1. Priorité : bloc ```code (format demandé dans le prompt)
         code_blocks = re.findall(r"```code\s*(.*?)\s*```", cleaned, re.DOTALL)
+        
+        # 2. Fallback : TOUS les blocs fenced sauf ```json (car c'est le JSON d'analyse)
+        if not code_blocks:
+            # On capture tous les blocs ``` qui ne sont PAS du JSON d'analyse
+            all_blocks = re.findall(r"```(?!json\b)(\w*)\s*(.*?)\s*```", cleaned, re.DOTALL)
+            code_blocks = []
+            for lang, content in all_blocks:
+                content = content.strip()
+                # On ne garde que les blocs qui contiennent des marqueurs de fichiers
+                if any(marker in content for marker in ['// Fichier', '// [DEBUT_FICHIER', '# Fichier', 'import ', 'export ', 'const ', 'function ', '"name":', '"dependencies":']):
+                    code_blocks.append(content)
+        
+        # 3. Fallback ultime : chercher les marqueurs de fichiers HORS des blocs fenced
+        if not code_blocks:
+            # Supprimer tous les blocs fenced (JSON inclus) pour isoler le code brut
+            stripped = re.sub(r'```\w*\s*.*?\s*```', '', cleaned, flags=re.DOTALL)
+            # Chercher les blocs commençant par un marqueur de fichier
+            raw_blocks = re.findall(r'((?:// Fichier|// \[DEBUT_FICHIER|# Fichier).*?)(?=(?:// Fichier|// \[DEBUT_FICHIER|# Fichier)|$)', stripped, re.DOTALL)
+            if raw_blocks:
+                code_blocks = [b.strip() for b in raw_blocks if b.strip()]
+        
         if code_blocks:
-            result["code"] = "\n\n".join([b.strip() for b in code_blocks])
+            result["code"] = "\n\n".join(code_blocks)
         else:
-            # Fallback si le LLM n'utilise pas la balise ```code``` exacte (on cherche les blocs non-json/non-md avec marqueurs)
-            code_blocks = re.findall(r"```(?!(?:json|markdown|markdown))\w*\s*((?:// Fichier|# Fichier|/\* Fichier).*?)\s*```", cleaned, re.DOTALL)
-            if code_blocks:
-                result["code"] = "\n\n".join([b.strip() for b in code_blocks])
-            else:
-                result["code"] = ""
+            result["code"] = ""
                 
         # --- EXTRACTION DU JSON ---
         # 1. Nettoyage des backticks Markdown (```json ... ```)

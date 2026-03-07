@@ -534,29 +534,29 @@ def run(task, provider, model, instruction):
                         click.echo(f"💾 Code sauvegardé (fallback) dans : {target_file}")
                     else:
                         click.echo("⚠️ Impossible de déterminer un fichier de destination valide (échec parsing + pas de fichier cible trouvé).")
-                
-                # Mise à jour du statut avec synthèse pour l'historique
-                synthesis = f"⭐⭐ Score : {final_state.get('score', 'N/A')}\n"
-                synthesis += f"✅ Points forts : {final_state.get('points_forts', 'N/A')}\n"
-                synthesis += f"⚠️ Alertes : {final_state.get('alertes', 'Aucune')}"
-                
-                manager_etapes.mark_step_as_completed(task, synthesis=synthesis)
-                click.echo(f"✅ Tâche {task} marquée comme terminée dans etapes.md et archivée dans EtapesAdd.md")
-                
-                # Mise à jour du verrou .spec-lock.json
-                lock_file = Path(".spec-lock.json")
-                if lock_file.exists():
-                    try:
-                        with open(lock_file, "r") as f:
-                            data = json.load(f)
-                        if task not in data.get("completed_tasks", []):
-                            data.setdefault("completed_tasks", []).append(task)
-                        with open(lock_file, "w") as f:
-                            json.dump(data, f, indent=4)
-                    except Exception as e:
-                        logger.error(f"Erreur lors de la mise à jour du lock : {e}")
             else:
                 click.echo("⚠️ Aucun code généré trouvé.")
+            
+            # Mise à jour du statut avec synthèse pour l'historique (TOUJOURS, même si le code est vide)
+            synthesis = f"⭐⭐ Score : {final_state.get('score', 'N/A')}\n"
+            synthesis += f"✅ Points forts : {final_state.get('points_forts', 'N/A')}\n"
+            synthesis += f"⚠️ Alertes : {final_state.get('alertes', 'Aucune')}"
+            
+            manager_etapes.mark_step_as_completed(task, synthesis=synthesis)
+            click.echo(f"✅ Tâche {task} marquée comme terminée dans etapes.md et archivée dans EtapesAdd.md")
+            
+            # Mise à jour du verrou .spec-lock.json
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                try:
+                    with open(lock_file, "r") as f:
+                        data = json.load(f)
+                    if task not in data.get("completed_tasks", []):
+                        data.setdefault("completed_tasks", []).append(task)
+                    with open(lock_file, "w") as f:
+                        json.dump(data, f, indent=4)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la mise à jour du lock : {e}")
             
             click.echo(f"\n✨ Tâche {task} terminée avec succès.")
         else:
