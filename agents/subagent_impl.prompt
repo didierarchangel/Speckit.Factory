@@ -58,14 +58,17 @@ Implémente la tâche suivante : "{target_task}"
   * Tu dois lire l'historique dans `{completed_tasks_summary}`.
   * Dans ton bloc de code, tu dois inclure le fichier `etapes.md`.
   * Tu dois ajouter une ligne de résumé (Statut + Description courte) juste après la dernière étape complétée pour marquer l'avancement de la tâche actuelle.
-- Règle 11 : 🔐 **AUTHENTIFICATION NODE.JS/EXPRESS & TYPESCRIPT STRICT**. Quand tu implémentes une authentification JWT avec Express/TypeScript :
-  * **INTERDIT** : N'utilise JAMAIS `dotenv`, `ts-node`, `cookie-parser`, `helmet`, `express-mongo-sanitize`, `xss-clean`, ou toute autre bibliothèque qui n'est pas EXPLICITEMENT listée dans la Constitution. Vérifie CHAQUE import contre la Constitution avant de l'écrire.
-  * **JWT_SECRET** : Le secret JWT DOIT être lu depuis `process.env.JWT_SECRET`. Déclare-le avec l'opérateur non-null assertion : `const JWT_SECRET = process.env.JWT_SECRET!;` après un `if (!process.env.JWT_SECRET) throw new Error(...)`. Cela évite les erreurs TS2769 et TS2322 dans `jwt.sign()` et `passport-jwt`.
-  * **req.user TypeScript** : Pour typer `req.user`, utilise l'extension d'interface Express dans un fichier dédié `backend/src/types/express.d.ts` (dans le dossier backend !) en étendant `Express.Request` et NON `Express.User`, pour éviter le conflit TS2717 avec `@types/passport`.
-  * **Mongoose Document** : Quand tu crées une interface qui étend `mongoose.Document`, NE redéfinis JAMAIS `_id` dans ton interface. `Document` fournit déjà `_id`. Sinon tu obtiens TS2320.
-  * **comparePassword** : La méthode `comparePassword` du modèle User DOIT utiliser `this.password` directement (méthode d'instance Mongoose). Elle ne doit JAMAIS faire de requête `findById` supplémentaire.
-  * **@types manquants** : Pour CHAQUE bibliothèque tierce que tu importes (ex: `bcryptjs`, `jsonwebtoken`, `passport-jwt`), tu DOIS aussi ajouter son paquet `@types/xxx` correspondant dans les `devDependencies`.
-  * **esModuleInterop** : Le `tsconfig.json` du backend DOIT contenir `"esModuleInterop": true` et `"allowSyntheticDefaultImports": true` pour éviter les erreurs d'import de modules CommonJS.
+- Règle 11 : 🔐 **AUTHENTIFICATION NODE.JS/EXPRESS & TYPESCRIPT STRICT**. Quand tu implémentes une authentification JWT avec Express/TypeScript, tu DOIS suivre ces recettes EXACTES (copie-les tel quel) :
+  * **INTERDIT** : N'utilise JAMAIS `dotenv`, `ts-node`, `cookie-parser`, `helmet`, `express-mongo-sanitize`, `xss-clean`, ou toute autre bibliothèque non listée dans la Constitution. Vérifie CHAQUE import.
+  * **Imports CommonJS** : Utilise TOUJOURS la syntaxe `import * as xxx from 'xxx'` pour les modules CommonJS. Exemples exacts : `import * as bcrypt from 'bcryptjs'`, `import * as jwt from 'jsonwebtoken'`. NE PAS utiliser `import bcrypt from 'bcryptjs'`.
+  * **JWT_SECRET pattern exact** : `if (!process.env.JWT_SECRET) {{ throw new Error('JWT_SECRET manquant'); }} const JWT_SECRET: string = process.env.JWT_SECRET as string;` — Utilise `as string` et NON `!` pour garantir le type string dans jwt.sign() et passport-jwt.
+  * **jwt.sign exact** : `jwt.sign(payload, JWT_SECRET, {{ expiresIn: '24h' }} as jwt.SignOptions)` — caste TOUJOURS le second argument en `jwt.SignOptions` pour éviter TS2769.
+  * **Interface IUser** : Le champ `password` DOIT être optionnel : `password?: string;`. NE redéfinis JAMAIS `_id` (hérité de Document). Exemple : `export interface IUser extends mongoose.Document {{ email: string; password?: string; name: string; comparePassword(candidatePassword: string): Promise<boolean>; }}`
+  * **Passport LocalStrategy callback** : Toujours typer explicitement : `new LocalStrategy({{ usernameField: 'email' }}, async (username: string, password: string, done: Function) => {{ ... }})`
+  * **Passport JwtStrategy** : `new JwtStrategy({{ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), secretOrKey: JWT_SECRET as string, passReqToCallback: false as const }}, async (payload: any, done: Function) => {{ ... }})`
+  * **@types** : Pour CHAQUE lib importée, ajoute aussi `@types/xxx` en devDependencies. Obligatoire pour : `@types/bcryptjs`, `@types/jsonwebtoken`, `@types/passport-jwt`, `@types/passport-local`, `@types/express`.
+  * **esModuleInterop** : Le `tsconfig.json` backend DOIT contenir `"esModuleInterop": true` et `"allowSyntheticDefaultImports": true` et `"skipLibCheck": true`.
+  * **package.json racine** : Le script `build` à la racine du projet NE DOIT PAS appeler `tsc` directement. Il doit faire : `"build": "cd backend && npm run build"` ou être absent.
 - Règle 12 : 📄 **INTÉGRITÉ DES FICHIERS JSON**. Les fichiers `package.json`, `tsconfig.json` et tout fichier `.json` DOIVENT être du JSON pur et valide. 
   * **JAMAIS de commentaires** (`/** ... */`, `//`, `/* */`) dans un fichier JSON. Le format JSON ne supporte PAS les commentaires.
   * **JAMAIS d'en-tête de traçabilité @SPEC-KIT-TASK** dans un fichier `.json`. L'en-tête de traçabilité du projet ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
