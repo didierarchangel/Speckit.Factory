@@ -347,6 +347,7 @@ class SpecGraphManager:
         import re
         fm = FileManager(base_path=str(self.root))
         code = state.get("code_to_verify", "")
+        written_files = []
         if code:
             pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
             file_blocks = re.split(pattern, code)
@@ -357,12 +358,20 @@ class SpecGraphManager:
                     file_path = file_blocks[i].strip()
                     file_content = file_blocks[i+1].strip()
                     
-                    # Nettoyage
+                    # Nettoyage des marqueurs
                     file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
                     file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
                     file_content = file_content.replace('```', '')
                     
+                    # Protection JSON : supprimer les commentaires /** ... */ et // ... des fichiers .json
+                    if file_path.endswith('.json'):
+                        file_content = re.sub(r'/\*\*[\s\S]*?\*/', '', file_content)
+                        file_content = re.sub(r'/\*[\s\S]*?\*/', '', file_content)
+                        file_content = re.sub(r'(?m)^\s*//.*$', '', file_content)
+                        file_content = file_content.strip()
+                    
                     fm.safe_write(file_path, file_content.strip())
+                    written_files.append(file_path)
         
         diagnostics = []
         import subprocess
@@ -375,11 +384,11 @@ class SpecGraphManager:
                 found_something = True
                 dir_name = target_dir.name if target_dir.name else "racine"
                 
-                # Auto-install dependencies if node_modules is missing
-                if not (target_dir / "node_modules").exists():
+                # Toujours réinstaller les dépendances si on a écrit un package.json dans ce dossier
+                pkg_written = any(fp.replace('\\', '/').startswith(dir_name + '/package.json') or fp == 'package.json' for fp in written_files)
+                if not (target_dir / "node_modules").exists() or pkg_written:
                     logger.info(f"⏳ Installation des dépendances (npm install) dans {dir_name}...")
                     try:
-                        # On exécute npm install silencieusement pour ne pas polluer les logs
                         subprocess.run("npm install > nul 2>&1", shell=True, cwd=str(target_dir), timeout=180)
                     except Exception as e:
                         diagnostics.append(f"❌ ERREUR lors de npm install dans {dir_name}: {str(e)}")

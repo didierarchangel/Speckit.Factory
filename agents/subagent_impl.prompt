@@ -67,6 +67,9 @@ Implémente la tâche suivante : "{target_task}"
   * **Passport LocalStrategy callback** : Toujours typer explicitement : `new LocalStrategy({{ usernameField: 'email' }}, async (username: string, password: string, done: Function) => {{ ... }})`
   * **Passport JwtStrategy** : `new JwtStrategy({{ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), secretOrKey: JWT_SECRET as string, passReqToCallback: false as const }}, async (payload: any, done: Function) => {{ ... }})`
   * **@types** : Pour CHAQUE lib importée, ajoute aussi `@types/xxx` en devDependencies. Obligatoire pour : `@types/bcryptjs`, `@types/jsonwebtoken`, `@types/passport-jwt`, `@types/passport-local`, `@types/express`.
+  * **Mongoose import** : Utilise TOUJOURS `import * as mongoose from 'mongoose'` (et non `import mongoose from 'mongoose'`) pour éviter TS2503.
+  * **req.user dans app.ts** : Dans la déclaration globale de type Express, utilise `user?: any` (et non `user?: IUser`) pour éviter le conflit TS2717 avec d'autres modules qui définissent `req.user`.
+  * **Codes HTTP** : Les erreurs métier doivent retourner les bons codes HTTP : 401 (Unauthorized) pour identifiants invalides, 409 (Conflict) pour email déjà existant, jamais 500 pour des erreurs métier.
   * **esModuleInterop** : Le `tsconfig.json` backend DOIT contenir `"esModuleInterop": true` et `"allowSyntheticDefaultImports": true` et `"skipLibCheck": true`.
   * **package.json racine** : Le script `build` à la racine du projet NE DOIT PAS appeler `tsc` directement. Il doit faire : `"build": "cd backend && npm run build"` ou être absent.
 - Règle 12 : 📄 **INTÉGRITÉ DES FICHIERS JSON**. Les fichiers `package.json`, `tsconfig.json` et tout fichier `.json` DOIVENT être du JSON pur et valide. 
