@@ -416,6 +416,15 @@ def run(task, provider, model, instruction):
         click.echo(f"🧠 Lancement du graphe d'orchestration pour : {task}")
         graph_manager = SpecGraphManager(llm)
         
+        # Auto-détection du contexte pour protéger les dossiers (Frontend vs Backend)
+        auto_instruction = instruction or ""
+        if not auto_instruction:
+            task_lower = task.lower()
+            if "backend" in task_lower:
+                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'frontend'. Concentre-toi exclusivement sur le backend."
+            elif "frontend" in task_lower:
+                auto_instruction = "⚠️ CONTEXTE FRONTEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'backend'. Concentre-toi exclusivement sur le frontend."
+
         initial_state = {
             "constitution_hash": validator.calculate_hash(constitution_path),
             "constitution_content": constitution_content,
@@ -430,7 +439,7 @@ def run(task, provider, model, instruction):
             "terminal_diagnostics": "",
             "error_count": 0,
             "last_error": "",
-            "user_instruction": instruction or ""
+            "user_instruction": auto_instruction
         }
         
         # Exécution du graphe
