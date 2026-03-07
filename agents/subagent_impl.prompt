@@ -58,7 +58,12 @@ Implémente la tâche suivante : "{target_task}"
   * Tu dois lire l'historique dans `{completed_tasks_summary}`.
   * Dans ton bloc de code, tu dois inclure le fichier `etapes.md`.
   * Tu dois ajouter une ligne de résumé (Statut + Description courte) juste après la dernière étape complétée pour marquer l'avancement de la tâche actuelle.
-
+- Règle 11 : 🔐 **AUTHENTIFICATION NODE.JS/EXPRESS**. Quand tu implémentes une authentification JWT avec Express :
+  * **INTERDIT** : N'utilise JAMAIS `dotenv`, `ts-node`, `cookie-parser`, ou toute autre bibliothèque qui n'est pas dans la Constitution. Utilise toujours `process.env` directement (les variables sont chargées par le script de démarrage).
+  * **JWT_SECRET** : Le secret JWT DOIT être lu depuis `process.env.JWT_SECRET` et le serveur DOIT échouer au démarrage (throw Error) si cette variable est absente. JAMAIS de valeur par défaut en dur.
+  * **req.user TypeScript** : Pour typer `req.user`, utilise l'extension d'interface Express dans un fichier dédié `src/types/express.d.ts` en étendant `Express.Request` et NON `Express.User`, pour éviter le conflit TS2717 avec `@types/passport`.
+  * **comparePassword** : La méthode `comparePassword` du modèle User DOIT utiliser `this.password` directement (méthode d'instance Mongoose). Elle ne doit JAMAIS faire de requête `findById` supplémentaire.
+- Règle 12 : 📄 **INTÉGRITÉ PACKAGE.JSON**. Le fichier `package.json` DOIT être un JSON pur et valide. Aucun commentaire, aucun caractère avant ou après les accolades `{{` `}}` de l'objet racine. Si tu génères un `package.json`, vérifie qu'il est strictement limité au JSON sans pollution.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
