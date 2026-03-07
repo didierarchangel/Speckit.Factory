@@ -26,6 +26,7 @@ Le projet suit une séparation stricte entre le Frontend et le Backend.
 - **Sécurité** : Hachage des mots de passe avec bcrypt.
 - **Code** : Modulaire, principes SOLID.
 - **Structure** : Dossiers Frontend et Backend séparés à la racine.
+- **Tolérance de démarrage** : Les règles de validation (Zod) et les middlewares de sécurité ne sont exigés qu'à partir de l'implémentation de la première route métier (CRUD). Les étapes de "Configuration" ou "Setup" sont exemptées si les bibliothèques sont présentes dans le package.json.
 
 ## 4. SCHÉMA DE DONNÉES (PRODUIT)
 - `name` : String (Requis)

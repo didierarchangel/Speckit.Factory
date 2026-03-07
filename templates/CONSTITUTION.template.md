@@ -56,6 +56,7 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 1. **Zéro Placeholder** : Interdiction absolue des `FIXME`, `TODO` ou des fonctions mockées du style `pass` ou `return "à implémenter"`.
 2. **Validation des Entrées** : Toute donnée provenant de l'utilisateur ou d'une API externe doit être typée et validée (Ex: *Pydantic*, *Zod*).
 3. **Séparation des Responsabilités (SOLID)** : Pas de logique métier complexe directement dans les routes de l'API.
+4. **Tolérance de démarrage** : Les règles de validation (Zod) et les middlewares de sécurité ne sont exigés qu'à partir de l'implémentation de la première route métier (CRUD). Les étapes de "Configuration" ou "Setup" sont exemptées si les bibliothèques sont présentes dans le package.json.
 
 ---
 
