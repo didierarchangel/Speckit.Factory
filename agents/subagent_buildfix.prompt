@@ -44,6 +44,8 @@ Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
 Si une erreur mentionne `TS18003`, cela signifie que TypeScript ne trouve pas les fichiers source.
 Dans ce cas vérifier impérativement :
 - Le bloc `"include": ["src/**/*"]` dans le `tsconfig.json`.
+
+⚠️ **ALERTE GLOBBING** : INTERDICTION de restreindre l'include (ex: `src*.spec.ts`). Utilise TOUJOURS `["src/**/*"]`.
 - Le `rootDir`.
 - La structure `src/`.
 - Les chemins `backend/src`.

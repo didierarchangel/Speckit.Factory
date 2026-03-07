@@ -222,6 +222,11 @@ outDir
 tu dois corriger tsconfig.json
 avant toute autre modification.
 
+⚠️ **ALERTE GLOBBING** : L'include de `tsconfig.json` doit TOUJOURS être :
+`"include": ["src/**/*"]`
+INTERDICTION FORMELLE d'utiliser des globs restrictifs comme `src*.spec.ts`.
+Toute la logique métier doit être compilée.
+
 Règle 10 : TRAÇABILITÉ ABSOLUE
 
 Chaque fichier source (TS, JS, CSS, HTML, etc.) DOIT
