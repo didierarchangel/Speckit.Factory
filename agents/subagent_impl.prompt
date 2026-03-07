@@ -53,8 +53,13 @@ Implémente la tâche suivante : "{target_task}"
   * Soit tu génères un `tsconfig.json` standard pur (SANS bloc `"references": [{{ "path": "./tsconfig.node.json" }}]`).
   * Soit, si ton `tsconfig.json` contient ce bloc `"references"`, tu DOIS impérativement générer AUSSI le fichier `tsconfig.node.json` (avec "composite": true et "include": ["vite.config.ts"]). 
   * Si tu laisses la référence sans créer le second fichier, le build de compilation échouera avec l'erreur `TS6053`.
+- Règle 10 : 📝 **TRAÇABILITÉ ET JOURNALISATION**. 
+  Tu as la responsabilité de mettre à jour le fichier `etapes.md`. 
+  * Tu dois lire l'historique dans `{completed_tasks_summary}`.
+  * Dans ton bloc de code, tu dois inclure le fichier `etapes.md`.
+  * Tu dois ajouter une ligne de résumé (Statut + Description courte) juste après la dernière étape complétée pour marquer l'avancement de la tâche actuelle.
 
-# INSTRUCTIONS DE SORTIE (IMPÉRATIF)
+
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
 
