@@ -5,6 +5,7 @@
 import click
 import os
 import json
+import shutil
 from pathlib import Path
 import logging
 from dotenv import load_dotenv
