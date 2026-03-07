@@ -122,8 +122,50 @@ def init(path, here):
     for k, v in frontend_choices.items(): click.echo(f" {k}) {v}")
     f_choice = click.prompt("Votre choix de Frontend", default="1", type=click.Choice(list(frontend_choices.keys())))
     selected_frontend = frontend_choices[f_choice]
+    
+    # Préparation des templates locaux (.speckit/templates)
+    templates_dir = target_path / ".speckit" / "templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    
+    factory_root = Path(__file__).parent
+    
+    # 1. Injection du Backend Template
+    backend_ts_map = {
+        "Node.js (Express)": "tsconfig.backend.node.json",
+        "Node.js (NestJS)": "tsconfig.backend.node.json"
+    }
+    
+    if selected_backend in backend_ts_map:
+        source = factory_root / "templates" / "tsconfigs" / backend_ts_map[selected_backend]
+        if source.exists():
+            shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
+            click.echo(f"✅ Template Backend ({selected_backend}) stocké localement.")
+            
+            # Écrasement forcé si backend existant
+            target_ts = target_path / "backend" / "tsconfig.json"
+            if target_ts.parent.exists():
+                shutil.copy(str(source), str(target_ts))
+                click.echo("✅ `backend/tsconfig.json` écrasé par le Golden Template.")
 
-    # Initialisation du verrou .spec-lock.json avec les IA et la Stack choisies
+    # 2. Injection du Frontend Template
+    frontend_ts_map = {
+        "React (Vite)": "tsconfig.frontend.react.json",
+        "Next.js (Vite)": "tsconfig.frontend.react.json" # Pour l'instant on utilise la même base
+    }
+
+    if selected_frontend in frontend_ts_map:
+        source = factory_root / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend]
+        if source.exists():
+            shutil.copy(str(source), str(templates_dir / "tsconfig.frontend.json"))
+            click.echo(f"✅ Template Frontend ({selected_frontend}) stocké localement.")
+
+            # Écrasement forcé si frontend existant
+            target_ts = target_path / "frontend" / "tsconfig.json"
+            if target_ts.parent.exists():
+                shutil.copy(str(source), str(target_ts))
+                click.echo("✅ `frontend/tsconfig.json` écrasé par le Golden Template.")
+
+    # Initialisation du verrou .spec-lock.json
     lock_file = target_path / ".spec-lock.json"
     initial_lock = {
         "version": "1.1",
@@ -138,49 +180,8 @@ def init(path, here):
         }
     }
 
-     # Initialisation du tsconfig.json avec les IA et la Stack choisies
-    tsconfig_file = target_path / "backend/tsconfig.json"
-    initial_tsconfig = {
-        "compilerOptions": {
-            "target": "ES2022",
-            "module": "CommonJS",
-            "rootDir": "./src",
-            "outDir": "./dist",
-            "strict": True,
-            "noImplicitAny": False, 
-            "esModuleInterop": True,
-            "skipLibCheck": True,
-            "forceConsistentCasingInFileNames": True
-        },
-        "include": ["src/**/*"],
-        "exclude": ["node_modules", "dist", "tests"]
-    }
-    
-    # Si on est dans un projet existant, on fusionne ou on écrase
-    if lock_file.exists():
-        try:
-            with open(lock_file, "r") as f:
-                existing = json.load(f)
-                initial_lock["completed_tasks"] = existing.get("completed_tasks", [])
-                initial_lock["completed_specs"] = existing.get("completed_specs", [])
-            
-            # Si le projet existe, on force l'écrasement du tsconfig (Golden Template)
-            if tsconfig_file.parent.exists():
-                with open(tsconfig_file, "w", encoding="utf-8") as f:
-                    json.dump(initial_tsconfig, f, indent=4)
-                click.echo("✅ `backend/tsconfig.json` existant écrasé (Golden Template appliqué).")
-        except Exception as e:
-            logger.error(f"Erreur lors de la lecture du lock ou l'écriture du tsconfig : {e}")
-            pass
-
     with open(lock_file, "w") as f:
         json.dump(initial_lock, f, indent=4)
-        
-    # Toujours créer le Golden Template pour le FileManager (moyen de pression sur l'IA)
-    example_file = target_path / "tsconfig.json.example"
-    with open(example_file, "w", encoding="utf-8") as f:
-        json.dump(initial_tsconfig, f, indent=4)
-    click.echo("✅ Golden Template `tsconfig.json.example` créé à la racine.")
     
     # Création du fichier de Gouvernance (pour forcer l'IA de l'IDE à obéir)
     rules_path = target_path / ".speckit-rules"

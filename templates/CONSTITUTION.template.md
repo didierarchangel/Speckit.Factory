@@ -72,7 +72,17 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 
 ---
 
-## 5. FORMAT TÂCHES ET TRAÇABILITÉ
+## 5. CONFIGURATIONS IMMUTABLES (SYSTÈME)
+Les fichiers suivants sont gérés par Speckit.Factory via des **Golden Templates**.
+**Interdiction absolue** pour les agents de les créer ou de les modifier manuellement :
+1.  `backend/tsconfig.json`
+2.  `frontend/tsconfig.json`
+
+Si une erreur de build survient, l'agent doit adapter le code source ou le `package.json` pour qu'ils respectent la configuration imposée, mais ne doit jamais toucher aux fichiers `tsconfig.json`.
+
+---
+
+## 6. FORMAT TÂCHES ET TRAÇABILITÉ
 Lors de la création d'un nouveau fichier source, celui-ci doit intégrer l'en-tête de traçabilité officiel :
 ```text
 /**

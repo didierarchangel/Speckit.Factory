@@ -61,14 +61,21 @@ class FileManager:
             logger.error(f"🛑 Tentative d'écriture sur un dossier comme si c'était un fichier : {relative_path}")
             return False
 
-        # Golden Template Override for tsconfig.json (STRICT)
+        # Golden Template Override for tsconfig.json (STRICT & MULTI-STACK)
         if "tsconfig.json" in str(file_path).lower():
-            example_path = self.base_path / "tsconfig.json.example"
-            if not example_path.exists():
-                factory_root = Path(__file__).parent.parent
-                example_path = factory_root / "tsconfig.json.example"
+            example_path = None
+            
+            # Détection du type de template (Backend vs Frontend)
+            if "backend" in relative_path.lower():
+                example_path = self.base_path / ".speckit" / "templates" / "tsconfig.backend.json"
+            elif "frontend" in relative_path.lower():
+                example_path = self.base_path / ".speckit" / "templates" / "tsconfig.frontend.json"
+            
+            # Fallback sur l'ancien tsconfig.json.example à la racine si pas de templates spécifiques
+            if not example_path or not example_path.exists():
+                example_path = self.base_path / "tsconfig.json.example"
 
-            if example_path.exists():
+            if example_path and example_path.exists():
                 logger.info(f"✨ Golden Template: Enforcing {example_path} for {relative_path}")
                 try:
                     content = example_path.read_text(encoding="utf-8")
@@ -76,6 +83,7 @@ class FileManager:
                     logger.error(f"❌ Erreur lecture Golden Template : {e}")
             else:
                 logger.warning(f"⚠️ Aucun Golden Template trouvé pour {relative_path}")
+                # Optional: On peut forcer une erreur ou un template par défaut ici si nécessaire.
 
         try:
             # Sécurité supplémentaire : si un dossier existe avec ce nom de fichier, on bloque
