@@ -150,7 +150,8 @@ def init(path, here):
     # 2. Injection du Frontend Template
     frontend_ts_map = {
         "React (Vite)": "tsconfig.frontend.react.json",
-        "Next.js (Vite)": "tsconfig.frontend.react.json" # Pour l'instant on utilise la même base
+        "Next.js (Vite)": "tsconfig.frontend.next.json",
+        "Vue.js (Vite)": "tsconfig.frontend.react.json" # Adaptable plus tard
     }
 
     if selected_frontend in frontend_ts_map:
