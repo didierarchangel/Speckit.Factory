@@ -137,6 +137,23 @@ def init(path, here):
             "frontend": selected_frontend
         }
     }
+
+     # Initialisation du tsconfig.json avec les IA et la Stack choisies
+    tsconfig_file = target_path / "backend/tsconfig.json"
+    initial_tsconfig = {
+        "compilerOptions": {
+            "target": "ES2022",
+            "module": "CommonJS",
+            "rootDir": "./src",
+            "outDir": "./dist",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true
+        },
+        "include": ["src/**/*"],
+        "exclude": ["node_modules", "dist", "tests"]
+    }
     
     # Si on est dans un projet existant, on fusionne ou on écrase
     if lock_file.exists():
@@ -145,11 +162,24 @@ def init(path, here):
                 existing = json.load(f)
                 initial_lock["completed_tasks"] = existing.get("completed_tasks", [])
                 initial_lock["completed_specs"] = existing.get("completed_specs", [])
-        except:
+            
+            # Si le projet existe, on force l'écrasement du tsconfig (Golden Template)
+            if tsconfig_file.parent.exists():
+                with open(tsconfig_file, "w", encoding="utf-8") as f:
+                    json.dump(initial_tsconfig, f, indent=4)
+                click.echo("✅ `backend/tsconfig.json` existant écrasé (Golden Template appliqué).")
+        except Exception as e:
+            logger.error(f"Erreur lors de la lecture du lock ou l'écriture du tsconfig : {e}")
             pass
 
     with open(lock_file, "w") as f:
         json.dump(initial_lock, f, indent=4)
+        
+    # Toujours créer le Golden Template pour le FileManager (moyen de pression sur l'IA)
+    example_file = target_path / "tsconfig.json.example"
+    with open(example_file, "w", encoding="utf-8") as f:
+        json.dump(initial_tsconfig, f, indent=4)
+    click.echo("✅ Golden Template `tsconfig.json.example` créé à la racine.")
     
     # Création du fichier de Gouvernance (pour forcer l'IA de l'IDE à obéir)
     rules_path = target_path / ".speckit-rules"
@@ -183,25 +213,6 @@ build/
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
         click.echo("✅ Fichier `.gitignore` par défaut créé.")
 
-    # Injection du tsconfig.json.example (Golden Template)
-    import shutil
-    factory_root = Path(__file__).parent
-    tsconfig_example_source = factory_root / "tsconfig.json.example"
-    
-    if tsconfig_example_source.exists():
-        tsconfig_example_dest = target_path / "tsconfig.json.example"
-        try:
-            shutil.copy(str(tsconfig_example_source), str(tsconfig_example_dest))
-            click.echo(f"✅ Template `tsconfig.json.example` injecté dans : {target_path.absolute()}")
-        except Exception as e:
-            click.echo(f"⚠️ Erreur lors de l'injection du template : {e}")
-    else:
-        click.echo("⚠️ Source `tsconfig.json.example` introuvable dans la Factory.")
-
-    click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
-    click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
-    click.echo("💡 Fichiers `.env.example` et `.env` créés. N'oubliez pas d'ajouter vos vraies clés API dans `.env`.")
-    click.echo("👉 Prochaine étape : `speckit specify 'votre demande ici'`")
 
 def setup_env_logic(target_path: Path):
     """Logique de création du fichier .env.example et .env (TEMPLATE)."""
