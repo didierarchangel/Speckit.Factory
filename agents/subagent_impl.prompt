@@ -76,6 +76,7 @@ Implémente la tâche suivante : "{target_task}"
   * **JAMAIS de commentaires** (`/** ... */`, `//`, `/* */`) dans un fichier JSON. Le format JSON ne supporte PAS les commentaires.
   * **JAMAIS d'en-tête de traçabilité @SPEC-KIT-TASK** dans un fichier `.json`. L'en-tête de traçabilité du projet ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
   * Le JSON doit commencer par `{{` et finir par `}}`, sans aucun autre caractère autour.
+- Règle 13 : 📁 **PRÉFIXE DE CHEMIN OBLIGATOIRE**. Si le projet a un dossier `backend/` et/ou `frontend/`, TOUS les chemins de fichiers que tu génères DOIVENT inclure ce préfixe. Ne génère JAMAIS `// Fichier : src/app.ts` si le fichier doit aller dans le backend. Génère `// Fichier : backend/src/app.ts`. Même chose pour le frontend : `// Fichier : frontend/src/App.tsx`. Un chemin sans préfixe écrira le fichier à la racine du projet et causera une erreur TS18003.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :

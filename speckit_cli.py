@@ -420,10 +420,14 @@ def run(task, provider, model, instruction):
         auto_instruction = instruction or ""
         if not auto_instruction:
             task_lower = task.lower()
+            # Détection explicite
             if "backend" in task_lower:
-                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'frontend'. Concentre-toi exclusivement sur le backend."
+                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'frontend'. Concentre-toi exclusivement sur le backend. TOUS les chemins de fichiers backend doivent commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json)."
             elif "frontend" in task_lower:
-                auto_instruction = "⚠️ CONTEXTE FRONTEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'backend'. Concentre-toi exclusivement sur le frontend."
+                auto_instruction = "⚠️ CONTEXTE FRONTEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'backend'. Concentre-toi exclusivement sur le frontend. TOUS les chemins de fichiers frontend doivent commencer par 'frontend/' (ex: frontend/src/App.tsx, frontend/package.json)."
+            # Détection implicite par mots-clés métier (backend par défaut si pas frontend)
+            elif any(kw in task_lower for kw in ['jwt', 'auth', 'modele', 'model', 'route', 'service', 'crud', 'api', 'middleware', 'database', 'mongo', 'passport']):
+                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT (détecté automatiquement) : Cette tâche concerne le backend. Ne modifie AUCUN fichier frontend. TOUS les chemins de fichiers DOIVENT commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json). Ne génère JAMAIS un chemin comme 'src/app.ts' sans le préfixe 'backend/'."
 
         initial_state = {
             "constitution_hash": validator.calculate_hash(constitution_path),
