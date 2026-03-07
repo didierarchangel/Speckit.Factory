@@ -343,7 +343,7 @@ class SpecGraphManager:
         logger.info("🛠️ Lancement des diagnostics réels du terminal...")
         
         # 0. Écrire le code web généré sur le disque AVANT de lancer les tests
-        from core.file_manager import FileManager
+        from utils.file_manager import FileManager
         import re
         fm = FileManager(base_dir=str(self.root))
         code = state.get("code_to_verify", "")
