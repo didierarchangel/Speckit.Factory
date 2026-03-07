@@ -475,6 +475,10 @@ def run(task, provider, model, instruction):
             elif any(kw in task_lower for kw in ['jwt', 'auth', 'modele', 'model', 'route', 'service', 'crud', 'api', 'middleware', 'database', 'mongo', 'passport']):
                 auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT (détecté automatiquement) : Cette tâche concerne le backend. Ne modifie AUCUN fichier frontend. TOUS les chemins de fichiers DOIVENT commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json). Ne génère JAMAIS un chemin comme 'src/app.ts' sans le préfixe 'backend/'."
 
+        # Extraction du checklist de sous-tâches pour l'auditeur
+        subtasks = manager_etapes.get_subtasks_for_step(task)
+        subtask_checklist = "\n".join([f"- [ ] {st}" for st in subtasks]) if subtasks else "Aucune sous-tâche définie."
+
         initial_state = {
             "constitution_hash": validator.calculate_hash(constitution_path),
             "constitution_content": constitution_content,
@@ -489,7 +493,8 @@ def run(task, provider, model, instruction):
             "terminal_diagnostics": "",
             "error_count": 0,
             "last_error": "",
-            "user_instruction": auto_instruction
+            "user_instruction": auto_instruction,
+            "subtask_checklist": subtask_checklist
         }
         
         # Exécution du graphe

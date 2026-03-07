@@ -118,15 +118,43 @@ class EtapeManager:
             "progress_pct": pct,
         }
 
-    def mark_step_as_completed(self, step_id: str, synthesis: str = None) -> bool:
-        """Passe une étape majeure et toutes ses sous-tâches de [ ] à [x]."""
+    def get_subtasks_for_step(self, step_id: str) -> list[str]:
+        """Retourne la liste des sous-tâches (texte brut) pour une étape donnée."""
+        if not self.etapes_path.exists():
+            return []
+        
+        lines = self.etapes_path.read_text(encoding="utf-8").splitlines()
+        subtasks = []
+        inside_target = False
+        
+        for line in lines:
+            if f"## [ ] {step_id}" in line or f"## [x] {step_id}" in line:
+                inside_target = True
+                continue
+            if line.startswith("## ") and inside_target:
+                break
+            if inside_target and line.strip().startswith("- ["):
+                # Extraire le texte de la sous-tâche (sans le checkbox)
+                text = re.sub(r'^-\s*\[.\]\s*', '', line.strip())
+                subtasks.append(text)
+        
+        return subtasks
+
+    def mark_step_as_completed(self, step_id: str, synthesis: str = None, project_root: str = None) -> bool:
+        """Passe une étape majeure de [ ] à [x]. Les sous-tâches sont cochées intelligemment 
+        en vérifiant l'existence des fichiers/dossiers mentionnés sur le disque."""
         if not self.etapes_path.exists():
             raise FileNotFoundError(f"etapes.md introuvable : {self.etapes_path}")
+
+        # Déterminer la racine du projet pour la vérification des fichiers
+        check_root = Path(project_root) if project_root else self.root
 
         lines = self.etapes_path.read_text(encoding="utf-8").splitlines()
         updated_lines = []
         inside_target_step = False
         found = False
+        checked_count = 0
+        total_subtasks = 0
 
         for line in lines:
             # Si on trouve le header de l'étape cible
@@ -136,13 +164,37 @@ class EtapeManager:
                 found = True
                 continue
             
-            # Si on rentre dans une AUTRE étape majeure, on arrête de cocher les sous-tâches
+            # Si on rentre dans une AUTRE étape majeure, on arrête
             if line.startswith("## ") and inside_target_step:
                 inside_target_step = False
             
-            # Si on est dans l'étape cible, on coche toutes les sous-tâches
+            # Pour les sous-tâches : vérification intelligente
             if inside_target_step and line.strip().startswith("- [ ]"):
-                updated_lines.append(line.replace("- [ ]", "- [x]"))
+                total_subtasks += 1
+                subtask_text = line.strip()
+                
+                # Extraire les chemins de fichiers/dossiers mentionnés dans la sous-tâche
+                # Patterns : `backend/tsconfig.json`, `backend/src`, `backend/.env`, etc.
+                file_patterns = re.findall(r'`([a-zA-Z0-9._\-/\\]+(?:\.[a-zA-Z0-9]+)?)`', subtask_text)
+                
+                if file_patterns:
+                    # Il y a des fichiers/dossiers mentionnés : vérifier leur existence
+                    all_exist = all(
+                        (check_root / fp).exists() for fp in file_patterns
+                    )
+                    if all_exist:
+                        updated_lines.append(line.replace("- [ ]", "- [x]"))
+                        checked_count += 1
+                        logger.info(f"  ✅ Sous-tâche vérifiée : {subtask_text[:60]}")
+                    else:
+                        missing = [fp for fp in file_patterns if not (check_root / fp).exists()]
+                        updated_lines.append(line)  # On ne coche PAS
+                        logger.warning(f"  ❌ Sous-tâche NON vérifiée (fichiers manquants: {missing}): {subtask_text[:60]}")
+                else:
+                    # Pas de fichier mentionné (ex: "Installer les dépendances") 
+                    # → On coche si l'étape parente est approuvée (comportement legacy)
+                    updated_lines.append(line.replace("- [ ]", "- [x]"))
+                    checked_count += 1
             else:
                 updated_lines.append(line)
 
@@ -156,12 +208,13 @@ class EtapeManager:
             return False
 
         self.etapes_path.write_text("\n".join(updated_lines), encoding="utf-8")
-        logger.info("Étape '%s' et ses sous-tâches marquées comme terminées.", step_id)
+        logger.info(f"Étape '{step_id}' : {checked_count}/{total_subtasks} sous-tâches vérifiées et cochées.")
 
         if synthesis:
             self.add_step_to_history(step_id, synthesis)
 
         return True
+
 
     def add_step_to_history(self, step_id: str, synthesis: str):
         """Ajoute une étape réalisée avec sa synthèse dans EtapesAdd.md."""

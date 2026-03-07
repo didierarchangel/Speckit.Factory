@@ -310,6 +310,9 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
+            # Injection du checklist des sous-tâches pour vérification granulaire
+            subtask_checklist = state.get("subtask_checklist", "Non disponible")
+            
             raw_output = chain.invoke({
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
@@ -320,6 +323,7 @@ class SpecGraphManager:
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
                 "user_instruction": state.get("user_instruction", ""),
+                "subtask_checklist": subtask_checklist,
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
