@@ -1,0 +1,89 @@
+commit e7d471bae05c8ec858e14bb72c581b9e90ff484a
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sun Mar 8 00:43:26 2026 +0100
+
+    docs: add troubleshooting section for incomplete step correction
+
+commit 15981d853bc1a5ec130af942924676edd9efdc06
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sun Mar 8 00:33:21 2026 +0100
+
+    feat: intelligent sub-task verification + strict auditor checklist injection
+
+commit 2da2a156bd7e8236999098ec76693d1ba39c4ff0
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sun Mar 8 00:16:00 2026 +0100
+
+    fix: critical - code extraction now handles all LLM formats, step completion always runs after approval
+
+commit 9317c4fdde40876c693b93aea4db37120b296b76
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sun Mar 8 00:05:30 2026 +0100
+
+    fix: add missing shutil import
+
+commit 8e4f571ef35c5c7bb42c2ad16a68015d8c0946e0
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 23:57:02 2026 +0100
+
+    fix: mandate tsconfig in Constitution, localize templates to core/, and fix managers template paths
+
+commit b402990b5d3f28f47db719ebeeb5a59e0b2c3eea
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 23:24:53 2026 +0100
+
+    pyproject
+
+commit 3c95bd9585faa81aa340be0c5997d594b4c2d5cd
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 23:04:27 2026 +0100
+
+    refactor: implement strict Golden Template filter in FileManager and centralize templates in core/templates
+
+commit c1eeded4848ad8658722b08429ac254e890fb3a2
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 21:51:13 2026 +0100
+
+    fix: resolve init missing paths, relax config constraints, and harden graph parser
+
+commit 8aa1861eac6932c344a349edd5d9845182e76474
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 21:32:23 2026 +0100
+
+    Fix: sanitize prompts to ensure strict compliance with Constitution for dependencies
+
+commit 849b50310c9cf9a9e7caaf8eab64bf9caa72d9bb
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 21:27:42 2026 +0100
+
+    feat: add specific Golden Template for Next.js
+
+commit aa04cfff08977eb254f8f1c222bb32aa650386e1
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 21:25:14 2026 +0100
+
+    feat: portable multi-stack Golden Templates and Constitutional enforcement
+
+commit 206e36e884977cf6c4197037aa3b1409dc7480fe
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 20:35:28 2026 +0100
+
+    Fix: enforce STRICT Golden Template and sanitize buildfix prompt
+
+commit 9dee41ecb84749a71cebe8693d8a6b13256f0443
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 20:26:34 2026 +0100
+
+    Golden template
+
+commit 8d75bfca133cb7176371d7f7da755960f1dd0001
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 20:25:05 2026 +0100
+
+    Refactor: soft Golden Template in FileManager and fixed syntax in CLI
+
+commit 450a3f841004a73e1a47cadd1741a8ddf30c08dd
+Author: Didier KAZITALA <didierarchangel@gmail.com>
+Date:   Sat Mar 7 19:56:26 2026 +0100
+
+    Fix: Python syntax error (true -> True) in tsconfig dict
