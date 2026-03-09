@@ -50,3 +50,10 @@ class SubagentBuildFixOutput(BaseModel):
     """Schéma de sortie attendu pour subagent_buildfix.prompt."""
     resume: str = Field(description="Explication concise des corrections de build effectuées.")
     impact_fichiers: List[str] = Field(description="Liste des fichiers de configuration ou de structure corrigés.")
+
+
+class SubagentTaskEnforcerOutput(BaseModel):
+    """Schéma de sortie attendu pour subagent_Speckit-TaskEnforcer.prompt."""
+    missing_files: List[str] = Field(description="Liste des fichiers manquants par rapport à la checklist.")
+    verdict: str = Field(description="STRICTEMENT 'CONFORME' ou 'NON-CONFORME'.")
+    explication: str = Field(description="Explication brève du verdict.")
