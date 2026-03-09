@@ -100,6 +100,10 @@ Autres tâches en attente : {pending_tasks}
 
 {analysis_output}
 
+4. SPÉCIFICATIONS DESIGN (IDENTITÉ VISUELLE) :
+
+{design_spec}
+
 # DIAGNOSTICS DU TERMINAL (ERREURS RÉELLES)
 
 {terminal_diagnostics}
@@ -158,6 +162,11 @@ par rapport aux normes de la Constitution, signale-le.
 Règle 4 :  
 Modularité et Testabilité.  
 Chaque fonction doit être prête à être testée.
+
+Règle 4.1 : FIDÉLITÉ DESIGN
+Tu DOIS respecter scrupuleusement les classes Tailwind fournies dans {design_spec}. 
+Si un pattern (ex: PRONANUT) est spécifié, utilise ses classes pour les boutons, tables et cartes.
+Ne tente pas d'inventer ton propre design si des spécifications sont présentes.
 
 Règle 5 : TESTS ET PLACEHOLDERS
 

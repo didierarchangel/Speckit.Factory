@@ -12,6 +12,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput
 from langchain_core.output_parsers import JsonOutputParser
+from core.GraphicDesign import GraphicDesign
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,9 @@ class AgentState(TypedDict):
     current_step: str
     completed_tasks_summary: str
     pending_tasks: str
+    
+    # Spécifications de design (Générées par GraphicDesign)
+    design_spec: dict
     
     # Cible actuelle
     target_task: str
@@ -199,6 +203,28 @@ class SpecGraphManager:
 
     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
 
+    def GraphicDesign_node(self, state: AgentState) -> dict:
+        """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
+        logger.info(f"🎨 Début du Design pour la tâche : {state['target_task']}")
+        
+        # Initialisation du moteur Design
+        design_engine = GraphicDesign(
+            dataset_dir=str(self.root / "design" / "dataset"),
+            constitution_path=str(self.root / "design" / "constitution_design.yaml")
+        )
+        
+        # On utilise le prompt utilisateur ou la tâche cible pour le design
+        prompt = state.get("user_instruction") or state["target_task"]
+        
+        try:
+            design_result = design_engine.generate(prompt)
+            logger.info(f"✅ Design terminé (Pattern: {design_result.get('pattern', 'Inconnu')}).")
+            return {"design_spec": design_result}
+        except Exception as e:
+            logger.error(f"❌ Échec du moteur GraphicDesign : {str(e)}")
+            # Fallback minimaliste
+            return {"design_spec": {"error": str(e), "tailwind": {}}}
+
     def analysis_node(self, state: AgentState) -> dict:
         """Nœud 1 : Analyse de conformité et segmentation."""
         logger.info(f"🔍 Début de l'Analyse pour la tâche : {state['target_task']}")
@@ -273,6 +299,7 @@ class SpecGraphManager:
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "code_map": state.get("code_map", "Non générée"),
                 "file_tree": state.get("file_tree", "Non générée"),
+                "design_spec": state.get("design_spec", "Non générée"),
                 "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
@@ -704,10 +731,12 @@ class SpecGraphManager:
         self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
         self.graph_builder.add_node("buildfix_node", self.buildfix_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
+        self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
         
         self.graph_builder.add_edge(START, "analysis_node")
         self.graph_builder.add_edge("analysis_node", "code_map_node")
-        self.graph_builder.add_edge("code_map_node", "impl_node")
+        self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
+        self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         self.graph_builder.add_edge("impl_node", "diagnostic_node")
         
         # Branchement conditionnel (Correction automatique du build)

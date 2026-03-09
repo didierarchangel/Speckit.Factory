@@ -1,0 +1,28 @@
+design_system: material-tailwind
+
+principles:
+  - clarity
+  - responsive
+  - minimal
+  - premium
+
+layout:
+  container: "max-w-7xl mx-auto px-6"
+  section_spacing: "py-16"
+
+radius:
+  card: "rounded-xl"
+  button: "rounded-lg"
+
+colors:
+  primary: "blue-600"
+  secondary: "slate-800"
+  accent: "indigo-500"
+
+typography:
+  title: "text-4xl font-bold"
+  subtitle: "text-lg text-gray-600"
+
+components:
+  card: "bg-white rounded-xl shadow-md p-6"
+  button_primary: "bg-blue-600 text-white px-6 py-3 rounded-lg"
