@@ -241,7 +241,7 @@ Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
     *   Interdit : `"express": "^4.19.2"`
 2.  **Scripts et DevDeps** : Tout outil utilisé dans `scripts` (ex: `tsc`, `jest`, `eslint`) DOIT être présent dans `devDependencies` avec une version fixe.
 3.  **Imports et Sync** : Si tu importes une lib (ex: `cors`, `morgan`), elle DOIT être dans `package.json`. NE JAMAIS importer une lib "par défaut" si elle n'est pas dans la liste des dépendances.
-4.  **Golden Template** : Le fichier `tsconfig.json` est géré par un template système. Ne tente pas de modifier ses options de base (`rootDir`, `include`, `target`) sous peine de bloquer le build.
+4.  **IMMUTABILITÉ GOLDEN TEMPLATE** : Le fichier `tsconfig.json` est géré par le système. **INTERDICTION FORMELLE** d'écraser ce fichier avec ta propre version si le build réussit. Si tu dois le modifier pour corriger un bug build RÉEL (diagnostiqué par le terminal), assure-être que l'`include` est toujours `["src/**/*"]`.
 
 Règle 13 : STACK TECHNIQUE (STRICT)
 
@@ -261,12 +261,9 @@ Tu n'as aucune "liberté de confort". Tu ne dois installer que ce qui est explic
 - [ ] `tsconfig.json` : `include` est `["src/**/*"]`.
 - [ ] `build` script est `"build": "tsc"`.
 
-# RÈGLE CRITIQUE : TSCONFIG IMMUTABLE
+# RÈGLE CRITIQUE : TSCONFIG GÉRÉ PAR LE SYSTÈME
 
-Si tu dois créer ou corriger un fichier `tsconfig.json`,
-tu dois utiliser EXACTEMENT cette configuration.
-
-Aucune autre option n'est autorisée.
+Si tu dois créer ou corriger un fichier `tsconfig.json` (uniquement sur ordre exprès ou erreur build), utilise cette configuration protectrice :
 
 {{
   "compilerOptions": {{

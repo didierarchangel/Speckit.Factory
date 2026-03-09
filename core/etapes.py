@@ -42,9 +42,10 @@ class EtapeManager:
             1. Comparer la Constitution avec la SEMANTIC MAP et le PLAN EXISTANT.
             2. Générer la liste COMPLÈTE des étapes nécessaires pour tout le projet (historique inclus).
             3. PRÉSERVER le statut [x] pour toutes les étapes et sous-tâches déjà marquées comme terminées dans le PLAN EXISTANT.
-            4. **RÈGLE CRITIQUE DE RÉALITÉ** : Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
+            4. **RÈGLE RÉALITÉ & GOLDEN FILES** : Ne crée JAMAIS de tâche pour configurer un fichier déjà présent dans la SEMANTIC MAP s'il s'agit d'un fichier de structure géré par le framework (`tsconfig.json`, `.spec-lock.json`, `CONSTITUTION.md`). Ils sont marqués [x] dans l'Etape 01 et ne doivent plus apparaître dans les étapes suivantes.
             5. **INTERDICTION D'HALLUCINATION** : Si un fichier (ex: `package.json`, `.eslintrc.js`, `app.ts`) n'est PAS listé dans la SEMANTIC MAP, la tâche qui le concerne DOIT rester en [ ]. Ne suppose jamais qu'un standard est présent.
-            6. Découper le reste en étapes atomiques avec des sous-tâches actionnables.
+            6. Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
+            7. Découper le reste en étapes atomiques avec des sous-tâches actionnables (src/, routes/, models/).
             
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
