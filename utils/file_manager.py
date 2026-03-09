@@ -166,12 +166,34 @@ class FileManager:
                 
                 # Protection JSON spécifique (uniquement sur le code IA)
                 if not is_golden and file_path_str.endswith('.json'):
-                    # On évite de stripper les globs /* dans les strings
-                    final_content = re.sub(r'/\*\*[\s\S]*?\*/', '', final_content)
-                    # On protège les patterns src/**/* en étant plus restrictif sur ce qu'on considère comme un commentaire
-                    # Un commentaire multi-ligne commence souvent en début de ligne ou après un espace
-                    final_content = re.sub(r'(?m)^\s*/\*[\s\S]*?\*/', '', final_content)
-                    final_content = re.sub(r'(?m)^\s*//.*$', '', final_content)
+                    def strip_comments(text):
+                        result = []
+                        i = 0
+                        in_string = False
+                        while i < len(text):
+                            if text[i] == '"' and (i == 0 or text[i-1] != '\\'):
+                                in_string = not in_string
+                                result.append(text[i])
+                                i += 1
+                            elif not in_string:
+                                if text[i:i+2] == '//':
+                                    # Skip until end of line
+                                    i = text.find('\n', i)
+                                    if i == -1: i = len(text)
+                                elif text[i:i+2] == '/*':
+                                    # Skip until end of comment block
+                                    i = text.find('*/', i)
+                                    if i == -1: i = len(text)
+                                    else: i += 2
+                                else:
+                                    result.append(text[i])
+                                    i += 1
+                            else:
+                                result.append(text[i])
+                                i += 1
+                        return "".join(result)
+                    
+                    final_content = strip_comments(final_content)
                 
                 if self.safe_write(file_path_str, final_content.strip()):
                     # On retourne le contenu FINAL (sanitisé/golden) pour synchronisation

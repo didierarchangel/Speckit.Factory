@@ -44,12 +44,12 @@ L'utilisateur a donné cette directive spécifique à l'implémenteur :
 - Règle 2 : Sécurité en premier. Vérifie l'Auth, la validation des inputs, les injections.
 - Règle 3 : Non-Régression. Le code ne doit en aucun cas interférer destructivement avec l'historique technique ({completed_tasks_summary}).
 - Règle 4 : Qualité SOLID. Le code doit être propre, typé (si le langage le requiert) et testable.
-- Règle 5 : TESTS ET PLACEHOLDERS PAR ÉTAPE.
-  * Si l'étape actuelle ({current_step}) concerne une "Initialisation" (Setup, Structure, Routing de base), **SOIS EXTRÊMEMENT TOLÉRANT**. Accepte les composants vides (stubs), les mocks, les placeholders UI, et l'absence totale de tests ou l'absence de bibliothèques non encore utilisées (ex: Zod s'il n'y a pas encore d'API). NE REJETTE ABSOLUMENT PAS le code pour des "fonctionnalités incomplètes" ou "dépendances manquantes" qui seront rajoutées dans les étapes suivantes (ex: ne rejette pas si `vitest` est dans `devDependencies` mais pas encore pleinement configuré). Ne rejette pas pour l'absence de `mongodb-memory-server` à l'initialisation.
-  * Si l'étape concerne l'implémentation de la logique métier finale, alors oui, exige des tests complets et punis les placeholders.
-- Règle 6 : DÉPENDANCES. Vérifie que chaque import dans le code est bien présent dans le `package.json`. Rejette si une dépendance est utilisée dans le code mais oubliée dans `package.json`, MAIS ne rejette pas l'inverse lors d'une initialisation (il est normal de pré-installer des dépendances qu'on utilisera plus tard sans les configurer, ex: `vitest`). Interdiction d'utiliser une bibliothèque non-autorisée (ex: `joi` au lieu de `class-validator`).
+- Règle 5 : TOLÉRANCE ET RIGUEUR.
+  * Si l'étape actuelle ({current_step}) concerne une "Initialisation" (Setup, Structure), accepte les stubs UI.
+  * **MAIS : ZÉRO TOLÉRANCE pour les hallucinations techniques.** Si l'implémenteur invente une version de package (ex: version de lib trop élevée pour la réalité actuelle), REJETTE IMMÉDIATEMENT.
+- Règle 6 : DÉPENDANCES (STRICT). Vérifie que chaque import est dans `package.json`. Rejette si une version de package semble hallucinatoire ou non-conforme à la Constitution.
 - Règle 7 : FICHIERS JSON ET TRAÇABILITÉ. Les fichiers `.json` (`package.json`, `tsconfig.json`, etc.) ne supportent PAS les commentaires. NE REJETTE JAMAIS un fichier `.json` pour absence d'en-tête de traçabilité `@SPEC-KIT-TASK`. L'en-tête de traçabilité ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
-- Règle 8 : FICHIERS RÉSIDUELS. Si les diagnostics du terminal mentionnent des erreurs dans des fichiers qui ne font PAS partie du code soumis pour cet audit, IGNORE ces erreurs. Ce sont des fichiers résiduels d'étapes précédentes qui ne relèvent pas de la responsabilité de l'agent actuel.
+- Règle 8 : INTÉGRITÉ GLOBALE. Si les diagnostics du terminal mentionnent une erreur de build (❌ ÉCHEC), tu DOIS REJETER le code, même si l'erreur semble se situer dans un fichier que tu n'as pas modifié. Une tâche n'est terminée que si le build GLOBAL réussit.
 
 # CHECKLIST DES SOUS-TÂCHES DE L'ÉTAPE (VÉRIFICATION OBLIGATOIRE)
 

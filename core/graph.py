@@ -638,7 +638,9 @@ class SpecGraphManager:
                 dir_name = target_dir.name if target_dir.name else "racine"
                 
                 # Toujours réinstaller les dépendances si on a écrit un package.json dans ce dossier
-                pkg_written = any(fp.replace('\\', '/').startswith(dir_name + '/package.json') or fp == 'package.json' for fp in written_files)
+                target_rel_pkg = (target_dir / "package.json").relative_to(self.root).as_posix()
+                pkg_written = any(Path(f).as_posix() == target_rel_pkg for f in written_files)
+                
                 if not (target_dir / "node_modules").exists() or pkg_written:
                     logger.info(f"⏳ Installation des dépendances (npm install) dans {dir_name}...")
                     try:

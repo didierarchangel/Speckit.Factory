@@ -1,10 +1,7 @@
 # ==============================================================================
-# META-INFORMATIONS (Usage interne - ignoré par le LLM)
-#
-# Fichier      : subagent_impl.prompt ("Développeur FullStack de Précision")
-# Description  : Prompt de génération de code pur. Ne fait pas d'architecture.
-# Prérequis    : Ce prompt doit fonctionner avec n'importe quel LLM
-#                (OpenAI, Anthropic, Gemini, Mistral, modèles locaux, etc).
+# RÈGLE D'OR : LA CONSTITUTION EST TA SEULE VÉRITÉ.
+# Toute ligne de code ou dépendance doit être validée par la Constitution.
+# Interdiction formelle d'inventer des versions de packages ou des APIs.
 # ==============================================================================
 
 # RÔLE ET MISSION
@@ -205,10 +202,13 @@ ou
 devDependencies
 
 Utilise toujours des versions FIXES.
+**INTERDICTION FORMELLE** d'inventer ou de deviner des versions.
+Si tu n'es pas sûr de la version d'une bibliothèque, utilise une version stable connue (ex: express 4.19.2, mongoose 8.3.1) ou réfère-toi à la Constitution.
 
 Exemple :
 
 "express": "4.19.2"
+
 
 Jamais :
 
@@ -219,6 +219,11 @@ RÈGLE 7.1 : COHÉRENCE SCRIPTS / DÉPENDANCES
 Chaque commande utilisée dans "scripts" (ex: `tsc`, `jest`, `eslint`) doit correspondre à un outil installé dans `devDependencies`. 
 **Interdiction formelle** d'ajouter un script si l'outil n'est pas déjà autorisé dans la Constitution.
 Si un outil autorisé est utilisé en script mais absent du `package.json`, tu DOIS l'ajouter dans `devDependencies` avec une version fixe.
+
+RÈGLE 7.2 : SYNCHRONISATION CONSTITUTION
+
+Si tu modifies le `package.json` pour ajouter ou mettre à jour une dépendance, tu DOIS également mettre à jour le fichier `Constitution/CONSTITUTION.md` de l'application (si présent) dans les sections techniques (1.1 Backend, 1.2 Frontend, 1.3 Outillage) pour y inscrire la version fixe exacte. 
+Ceci garantit que la Constitution reste la source de vérité actualisée avec les versions réellement installées.
 
 Règle 8 : INTERDICTION HORS CONSTITUTION
 
