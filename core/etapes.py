@@ -236,9 +236,15 @@ class EtapeManager:
                 
                 if file_patterns:
                     # Il y a des fichiers/dossiers mentionnés : vérifier leur existence
-                    all_exist = all(
-                        (check_root / fp).exists() for fp in file_patterns
-                    )
+                    all_exist = True
+                    missing = []
+                    for fp in file_patterns:
+                        # Normalisation du chemin : on enlève le slash de début et on remplace les backslashes
+                        clean_fp = fp.lstrip('/').lstrip('\\').replace('\\', '/')
+                        if not (check_root / clean_fp).exists():
+                            all_exist = False
+                            missing.append(fp)
+                    
                     if all_exist:
                         updated_lines.append(line.replace("- [ ]", "- [x]"))
                         checked_count += 1

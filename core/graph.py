@@ -97,8 +97,9 @@ class SpecGraphManager:
         
         # 3. Fallback ultime : chercher les marqueurs de fichiers HORS des blocs fenced
         if not code_blocks:
-            # Supprimer tous les blocs fenced (JSON inclus) pour isoler le code brut
-            stripped = re.sub(r'```\w*\s*.*?\s*```', '', cleaned, flags=re.DOTALL)
+            # Au lieu de supprimer tous les blocs, on les préserve pour l'extraction
+            # mais on nettoie juste les marqueurs ```json pour ne pas les confondre
+            stripped = cleaned.replace("```json", "       ")
             # Chercher les blocs commençant par un marqueur de fichier
             raw_blocks = re.findall(r'((?:// Fichier|// \[DEBUT_FICHIER|# Fichier).*?)(?=(?:// Fichier|// \[DEBUT_FICHIER|# Fichier)|$)', stripped, re.DOTALL)
             if raw_blocks:
@@ -137,6 +138,12 @@ class SpecGraphManager:
             # Si le code était dans le JSON malencontreusement (ancien format), on le prend
             if not result.get("code") and parsed_json.get("code"):
                  result["code"] = parsed_json.get("code")
+            
+            # Nettoyage final des backticks résiduels dans le code extrait
+            if result.get("code"):
+                result["code"] = re.sub(r'```[a-zA-Z0-9-]*\n?', '', result["code"])
+                result["code"] = result["code"].replace('```', '').strip()
+                
             return result
         except Exception as e:
             logger.warning(f"⚠️ Échec du parsing JSON standard : {str(e)}. Lancement du Fallback d'extraction agressive...")
@@ -569,8 +576,24 @@ class SpecGraphManager:
         base_dict = parse_to_dict(base_code)
         delta_dict = parse_to_dict(delta_code)
         
-        # Fusion : delta gagne
-        base_dict.update(delta_dict)
+        # Fusion robuste : on cherche par correspondance de chemin
+        for d_fname, d_data in delta_dict.items():
+            found = False
+            # Tentative 1 : Match exact
+            if d_fname in base_dict:
+                base_dict[d_fname] = d_data
+                found = True
+            else:
+                # Tentative 2 : Match par suffixe (ex: articles.controller.ts match backend/src/...)
+                # ou l'inverse
+                for b_fname in list(base_dict.keys()):
+                    if b_fname.endswith(d_fname) or d_fname.endswith(b_fname):
+                        base_dict[b_fname] = d_data
+                        found = True
+                        break
+            
+            if not found:
+                base_dict[d_fname] = d_data
         
         # Reconstruction
         merged = []

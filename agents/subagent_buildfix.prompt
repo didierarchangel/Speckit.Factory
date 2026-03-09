@@ -142,6 +142,13 @@ Si TypeScript indique : `Cannot find module 'lib-name'` :
 3. utiliser une version fixe.
 4. ajouter les types correspondants (@types/*) si autorisé.
 
+CAS CRITIQUE : DTO / ZOD (TS2552)
+
+Si TypeScript indique : `Cannot find name 'XDto'. Did you mean 'X'?` :
+1. Vérifie la casse : Souvent, le TYPE est en `PascalCase` (`CreateUserDto`) et l'OBJET Zod est en `camelCase` (`createUserDto`).
+2. Assure-toi que les DEUX sont importés depuis le fichier DTO.
+3. Le validateur Zod `validate(schema)` attend l'OBJET (`camelCase`), pas le Type.
+
 **PARTIE 2 : LE CODE CORRIGÉ (HORS DU JSON)**
 ⚠️ **RÈGLE CRITIQUE** : Le code complet CORRIGÉ doit être fourni en dehors du JSON, dans un bloc markdown dédié ` ```code ... ``` `.
 C'est ici que tu mets TOUT le code concaténé, avec les en-têtes `// Fichier : chemin/vers/fichier`.

@@ -233,6 +233,13 @@ Si la tâche implique `tsconfig.json`, tu dois respecter ces règles :
     *   Interdit : `"include": ["backend/src/**/*"]` (Mauvais car redondant).
 2.  **Globbing Global** : `"include": ["src/**/*"]` est OBLIGATOIRE. 
 
+Règle 11 : CONVENTION DTO / ZOD (STRICTE)
+1.  **Casse binaire** : 
+    *   L'objet Zod (schéma) DOIT être en `camelCase` (ex: `createArticleDto`).
+    *   Le type TypeScript extrait par Zod DOIT être en `PascalCase` (ex: `CreateArticleDto`).
+2.  **Validation** : La fonction `validate()` utilisée dans les contrôleurs attend TOUJOURS l'objet Zod (`camelCase`).
+3.  **Imports** : Lorsque tu implémentes un contrôleur, vérifie que tu as importé les DEUX (le Type pour le typage Express, et l'Objet pour la validation).
+
 
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
