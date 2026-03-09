@@ -75,6 +75,31 @@ def init(path, here):
     # Création des fichiers de base
     (target_path / "Constitution" / "CONSTITUTION.md").touch()
     (target_path / "Constitution" / "etapes.md").touch()
+
+    # Injection de la CONSTITUTION par défaut
+    factory_root = Path(__file__).parent
+    source_constitution = factory_root / "core" / "templates" / "CONSTITUTION.template.md"
+    if source_constitution.exists():
+        shutil.copy(str(source_constitution), str(target_path / "Constitution" / "CONSTITUTION.md"))
+
+    # Initialisation de l'intelligence graphique (design/)
+    design_path = target_path / "design"
+    (design_path / "dataset").mkdir(parents=True, exist_ok=True)
+    
+    source_design = factory_root / "core" / "templates" / "design"
+    if source_design.exists():
+        # Copie récursive des patterns et de la constitution design
+        for item in source_design.iterdir():
+            if item.is_dir():
+                # On ne copie que dataset/ pour l'instant
+                if item.name == "dataset":
+                    for ds_file in item.iterdir():
+                        # Mapper les anciens noms vers les nouveaux si nécessaire (bien que déjà renommés dans templates)
+                        target_name = ds_file.name.replace("material", "standard").replace("pronanut", "premium")
+                        shutil.copy(str(ds_file), str(design_path / "dataset" / target_name))
+            else:
+                shutil.copy(str(item), str(design_path / item.name))
+        click.echo("✅ Intelligence Graphique (design/) initialisée.")
     
     # Sélection interactive des IA (Style GitHub Spec-Kit)
     click.echo("\n🤖 Configuration des IA partenaires (Sélectionnez une ou plusieurs) :")
@@ -109,6 +134,15 @@ def init(path, here):
 
     # Sélection interactive de la Stack
     click.echo("\n🏗️ Configuration de la Stack Technique :")
+    
+    design_choices = {
+        "1": "Standard",
+        "2": "premium"
+    }
+    click.echo("--- Style de Design ---")
+    for k, v in design_choices.items(): click.echo(f" {k}) {v}")
+    d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
+    selected_design = design_choices[d_choice]
     
     backend_choices = {
         "1": "Node.js (Express)",
@@ -203,7 +237,8 @@ def init(path, here):
         "selected_ais": selected_providers,
         "stack_preferences": {
             "backend": selected_backend,
-            "frontend": selected_frontend
+            "frontend": selected_frontend,
+            "design": selected_design
         }
     }
 

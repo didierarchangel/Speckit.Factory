@@ -165,7 +165,7 @@ Chaque fonction doit être prête à être testée.
 
 Règle 4.1 : FIDÉLITÉ DESIGN
 Tu DOIS respecter scrupuleusement les classes Tailwind fournies dans {design_spec}. 
-Si un pattern (ex: PRONANUT) est spécifié, utilise ses classes pour les boutons, tables et cartes.
+Si un pattern (ex: premium) est spécifié, utilise ses classes pour les boutons, tables et cartes.
 Ne tente pas d'inventer ton propre design si des spécifications sont présentes.
 
 Règle 5 : TESTS ET PLACEHOLDERS

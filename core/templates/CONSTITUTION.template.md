@@ -73,8 +73,25 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 * **Typage** : TypeScript strict activé.
 
 ---
-
-## 5. CONFIGURATIONS SYSTÈME (GOLDEN TEMPLATES)
+ 
+ ## 5. 🎨 DESIGN CONSTITUTION (INTELLIGENCE GRAPHIQUE)
+ L'identité visuelle et l'expérience utilisateur sont pilotées par l'agent `GraphicDesign`. 
+ 
+ ### 5.1 Principes de Design
+ * **Clarté & Minimalisme** : Interfaces épurées, focus sur la hiérarchie de l'information.
+ * **Réactivité (Responsive)** : Utilisation rigoureuse des classes Tailwind pour tous les formats d'écran.
+ 
+ ### 5.2 Systèmes de Design autorisés
+ * **Standard-Tailwind** : Pour les interfaces modernes, créatives et standards.
+ * **premium (Premium)** : Pour les interfaces professionnelles, tableaux de données complexes et look "Clean & Premium".
+ 
+ ### 5.3 Règles de composants
+ * **Layout** : Toujours utiliser `max-w-7xl mx-auto px-6` pour le conteneur principal.
+ * **Cartes** : Coins arrondis (`rounded-xl`) et ombres subtiles.
+ 
+ ---
+ 
+ ## 6. CONFIGURATIONS SYSTÈME (GOLDEN TEMPLATES)
 Les fichiers suivants sont gérés par Speckit.Factory. 
 Les agents doivent les inclure lors de l'initialisation pour respecter la structure du projet, mais **ne doivent jamais** modifier les options fondamentales (`rootDir`, `outDir`, `include`, `target`) :
 1.  `backend/tsconfig.json`

@@ -13,7 +13,7 @@ L'intelligence graphique du projet est pilotée par le subagent `GraphicDesign`.
 - **Réactivité** : Design "Mobile-First" utilisant Tailwind CSS.
 - **Identité Visuelle** :
   - **Standard** : Basé sur Material Tailwind.
-  - **Premium (PRONANUT)** : Palette bleu/blanc, ombres douces, typographie monospacée pour les données numériques.
+  - **Premium (premium)** : Palette bleu/blanc, ombres douces, typographie monospacée pour les données numériques.
 
 ### Règles de Mise en Page
 - **Conteneurs** : `max-w-7xl mx-auto px-6`

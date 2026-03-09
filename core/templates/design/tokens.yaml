@@ -1,0 +1,19 @@
+colors:
+  blue:
+    50: "#eff6ff"
+    100: "#dbeafe"
+    600: "#2563eb"
+    700: "#1d4ed8"
+    800: "#1e40af"
+  slate:
+    800: "#1e293b"
+  indigo:
+    500: "#6366f1"
+  gray:
+    500: "#6b7280"
+    600: "#4b5563"
+    800: "#1f2937"
+spacing:
+  container: "max-w-7xl"
+  px: "px-6"
+  py: "py-16"

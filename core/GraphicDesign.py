@@ -70,12 +70,30 @@ class GraphicDesign:
         """Main entry point: Intent -> Pattern selection -> AST generation."""
         category = self.parse_intent(prompt)
         
-        # Check for system preference in prompt
+        # Détection du système de design (premium ou Standard)
+        # Priorité : Prompt > Lockfile > Default (Standard)
         system = None
-        if "pronanut" in prompt.lower():
-            system = "pronanut"
-        elif "material" in prompt.lower():
-            system = "material"
+        
+        # 1. Vérification dans le prompt
+        if any(kw in prompt.lower() for kw in ["premium", "business", "clean", "pro"]):
+            system = "premium"
+        elif "standard" in prompt.lower():
+            system = "Standard"
+            
+        # 2. Si non présent dans le prompt, vérification dans le .spec-lock.json
+        if not system:
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                try:
+                    import json
+                    with open(lock_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        system = data.get("stack_preferences", {}).get("design")
+                except:
+                    pass
+        
+        # 3. Fallback par défaut si aucune préférence trouvée
+        system = system or "Standard"
             
         pattern = self.select_pattern(category, preferred_system=system)
         

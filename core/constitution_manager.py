@@ -48,7 +48,8 @@ class ConstitutionManager:
                - Note : Si Node.js et TypeScript sont choisis pour le Backend, tu DOIS impérativement préciser la configuration : `Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)`. Cela empêchera l'Auditeur d'exiger des ES Modules.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
-            5. L'Outillage et les Tests : Tu DOIS impérativement inclure Jest, Supertest (Backend) et Vitest (Frontend si Vite). Ne les oublie pas !
+            5. Design Intelligence : Tu DOIS impérativement inclure la section "DESIGN CONSTITUTION" et mentionner l'agent `GraphicDesign`, ainsi que les systèmes `Standard-Tailwind` et `premium` (Premium).
+            6. L'Outillage et les Tests : Tu DOIS impérativement inclure Jest, Supertest (Backend) et Vitest (Frontend si Vite). Ne les oublie pas !
 
             ATTENTION AU FORMATAGE MARKDOWN :
             - Remplis les champs entre crochets du template (ex: [Ex: Jest...])

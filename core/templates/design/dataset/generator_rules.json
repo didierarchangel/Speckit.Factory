@@ -1,0 +1,22 @@
+{
+    "color_variants": [
+        "blue",
+        "indigo",
+        "purple",
+        "emerald",
+        "rose",
+        "slate"
+    ],
+    "radius_variants": [
+        "rounded-lg",
+        "rounded-xl",
+        "rounded-2xl",
+        "rounded-full"
+    ],
+    "shadow_variants": [
+        "shadow-sm",
+        "shadow-md",
+        "shadow-lg",
+        "shadow-xl"
+    ]
+}
