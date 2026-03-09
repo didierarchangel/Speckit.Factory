@@ -28,6 +28,17 @@ class SemanticScanner:
             
         return "\n".join(lines)
 
+    def get_file_tree(self) -> str:
+        """Retourne la liste plate de tous les fichiers du projet (pour l'Auditeur)."""
+        file_list = []
+        for root, dirs, files in os.walk(str(self.root)):
+            # Filtrage des dossiers ignorés
+            dirs[:] = [d for d in dirs if d not in self.ignored_dirs]
+            for file in files:
+                rel_path = os.path.relpath(os.path.join(root, file), str(self.root)).replace('\\', '/')
+                file_list.append(rel_path)
+        return "\n".join(file_list)
+
     def _scan_dir(self, directory: Path, indent: str = "") -> str:
         """Récursivement scanne les dossiers en ignorant les dossiers bruyants."""
         output = []

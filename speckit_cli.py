@@ -659,7 +659,7 @@ def run(task, component, provider, model, instruction):
             "terminal_diagnostics": "",
             "error_count": 0,
             "last_error": "",
-            "user_instruction": auto_instruction,
+            "user_instruction": instruction,
             "subtask_checklist": subtask_checklist,
             "code_map": semantic_map,
             "file_tree": file_tree
