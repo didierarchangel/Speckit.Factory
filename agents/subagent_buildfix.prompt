@@ -23,6 +23,9 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 4. SEMANTIC CODE MAP (STRUCTURE SÉMANTIQUE DU CODE) :
 {code_map}
 
+5. FEEDBACK AUDITEUR (GUIDANCE SUPPLÉMENTAIRE) :
+{feedback_correction}
+
 # PRIORITÉ DE RÉPARATION
 
 1️⃣ JSON invalide → reconstruire le fichier

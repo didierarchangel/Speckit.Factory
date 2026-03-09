@@ -309,7 +309,7 @@ class SpecGraphManager:
             # Persistance immédiate des fichiers sur le disque (on récupère le code sanitizé/golden)
             sanitized_code = ""
             if result.get("code"):
-                sanitized_code = self._persist_code_to_disk(result["code"])
+                sanitized_code, _ = self._persist_code_to_disk(result["code"])
                 
             return {
                 "code_to_verify": sanitized_code if sanitized_code else result["code"],
@@ -489,6 +489,7 @@ class SpecGraphManager:
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "constitution_content": state["constitution_content"],
+                "feedback_correction": state.get("feedback_correction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
@@ -497,7 +498,7 @@ class SpecGraphManager:
             # Persistance immédiate des corrections sur le disque
             sanitized_fix = ""
             if result.get("code"):
-                sanitized_fix = self._persist_code_to_disk(result["code"])
+                sanitized_fix, _ = self._persist_code_to_disk(result["code"])
                 
             # FUSION du code : on fusionne les corrections avec le code de base
             merged_code = self._merge_code(state.get("code_to_verify", ""), sanitized_fix if sanitized_fix else result.get("code", ""))
@@ -513,16 +514,21 @@ class SpecGraphManager:
             logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
 
-    def _persist_code_to_disk(self, code: str) -> str:
-        """Extrait les blocs de fichiers du code généré, les écrit, et retourne le code sanitizé."""
+    def _persist_code_to_disk(self, code: str) -> tuple[str, list[str]]:
+        """
+        Extrait les blocs de fichiers du code généré, les écrit, 
+        et retourne le tuple (code_sanitizé, liste_chemins_écrits).
+        """
         from utils.file_manager import FileManager
         fm = FileManager(base_path=str(self.root))
         
         if not code:
-            return ""
+            return "", []
             
         # extract_and_write retourne désormais [{"path": ..., "content": ...}]
         results = fm.extract_and_write(code)
+        
+        written_paths = [item["path"] for item in results]
         
         if results:
             logger.info(f"💾 {len(results)} fichiers persistés sur le disque.")
@@ -531,9 +537,9 @@ class SpecGraphManager:
             for item in results:
                 sanitized_blocks.append(f"// Fichier : {item['path']}")
                 sanitized_blocks.append(item['content'])
-            return "\n".join(sanitized_blocks)
+            return "\n".join(sanitized_blocks), written_paths
             
-        return code
+        return code, []
 
     def _merge_code(self, base_code: str, delta_code: str) -> str:
         """Fusionne deux blocs de code multi-fichiers. Le delta écrase la base si conflit."""
@@ -595,7 +601,7 @@ class SpecGraphManager:
         
         # 0. S'assurer que le code de l'état est bien sur le disque
         code = state.get("code_to_verify", "")
-        written_files = self._persist_code_to_disk(code)
+        _, written_files = self._persist_code_to_disk(code)
         
         diagnostics = []
         import subprocess
