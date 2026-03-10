@@ -363,6 +363,14 @@ class EtapeManager:
                                 all_ok = False
                                 missing_items.append(item)
                                 continue
+                                
+                        # Skip les extraits de code JS/TS fréquents (faux positifs pour des fichiers)
+                        code_snippets = {
+                            'express.json', 'express.urlencoded', 'cors()', 'helmet()', 'morgan()',
+                            'NextFunction', 'Request', 'Response', 'app.use', 'connectDB()', 'errorHandler'
+                        }
+                        if item in code_snippets or item.endswith('()'):
+                            continue
                         
                         # On vérifie si c'est un fichier OU une dépendance
                         exists_as_file = self._file_exists(check_root, item)
