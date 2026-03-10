@@ -116,12 +116,13 @@ class SpecGraphManager:
         import re
         
         # 1. Priorité : bloc ```code (format demandé dans le prompt)
-        code_blocks = re.findall(r"```code\s*(.*?)\s*```", cleaned, re.DOTALL)
+        # Fix Regex: eviter catastropic backtracking en retirant \s* avant .*?
+        code_blocks = re.findall(r"```code\n?(.*?)\n?```", cleaned, re.DOTALL)
         
         # 2. Fallback : TOUS les blocs fenced sauf ```json (car c'est le JSON d'analyse)
         if not code_blocks:
             # On capture tous les blocs ``` qui ne sont PAS du JSON d'analyse
-            all_blocks = re.findall(r"```(?!json\b)(\w*)\s*(.*?)\s*```", cleaned, re.DOTALL)
+            all_blocks = re.findall(r"```(?!json\b)(\w*)\n?(.*?)\n?```", cleaned, re.DOTALL)
             code_blocks = []
             for lang, content in all_blocks:
                 content = content.strip()
@@ -136,21 +137,21 @@ class SpecGraphManager:
                 
         # --- EXTRACTION DU JSON ---
         # 1. Priorité : Balises <JSON_OUTPUT> (Format standardisé)
-        json_match = re.search(r"<JSON_OUTPUT>\s*(.*?)\s*</JSON_OUTPUT>", cleaned, re.DOTALL)
+        json_match = re.search(r"<JSON_OUTPUT>\n?(.*?)\n?</JSON_OUTPUT>", cleaned, re.DOTALL)
         if json_match:
             json_content = json_match.group(1).strip()
         else:
             # 2. Nettoyage des backticks Markdown (```json ... ```)
             json_content = cleaned
             if "```json" in json_content:
-                match = re.search(r"```json\s*(.*?)\s*```", json_content, re.DOTALL)
+                match = re.search(r"```json\n?(.*?)\n?```", json_content, re.DOTALL)
                 if match:
                     json_content = match.group(1).strip()
                 else:
                     json_content = re.sub(r"^```json\s*", "", json_content)
             elif "```" in json_content:
                  # S'il y a un bloc ``` générique au début, on assume que c'est le json
-                 match = re.search(r"^```\s*(\{.*?\})\s*```", json_content, re.DOTALL)
+                 match = re.search(r"^```\n?(\{.*?\})\n?```", json_content, re.DOTALL)
                  if match:
                      json_content = match.group(1).strip()
             
