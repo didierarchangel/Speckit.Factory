@@ -441,12 +441,15 @@ class SpecGraphManager:
                 continue
             
             # Extraire les noms de packages des backticks dans la checklist
-            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist, re.IGNORECASE))
+            # Suppression de IGNORECASE pour éviter de capturer "Article" comme package
+            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist))
             
             # Filtrer : garder seulement ce qui ressemble à un package npm
             npm_packages = {d for d in checklist_deps 
                           if not any(d.endswith(ext) for ext in ('.ts', '.tsx', '.js', '.json', '.md'))
                           and '/' not in d or d.startswith('@')}
+            # Sécurité supplémentaire : ignorer les noms commençant par une majuscule
+            npm_packages = {p for p in npm_packages if not (p and p[0].isupper())}
             
             if not npm_packages:
                 continue
@@ -751,8 +754,13 @@ class SpecGraphManager:
                     # Détection des modules manquants : "Cannot find module 'express'"
                     matches = re.findall(r"Cannot find module '([^']+)'", output)
                     if matches:
-                        # Filtrer les imports locaux (. ou /) pour n'installer que les packages npm
-                        npm_matches = [m for m in matches if not m.startswith('.') and not m.startswith('/')]
+                        # Filtrer : 
+                        # 1. Pas d'imports locaux (. ou /)
+                        # 2. Pas de noms commençant par une Majuscule (souvent des classes/modèles locaux)
+                        npm_matches = [
+                            m for m in matches 
+                            if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
+                        ]
                         missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
