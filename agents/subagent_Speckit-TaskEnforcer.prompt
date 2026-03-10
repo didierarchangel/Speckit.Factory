@@ -22,6 +22,7 @@ Ta mission est critique : vérifier que l'implémenteur n'a oublié AUCUN fichie
 ## ⚖️ RÈGLES DU VERDICT
 
 -   **CONFORME** : TOUS les fichiers de la checklist sont présents (exactement ou via correspondance de sous-répertoire) dans la `file_tree`.
+    -   **IMPORTANT** : Ignore les mots simples commençant par une majuscule (ex: `Article`, `CRUD`) s'ils ne ressemblent pas à un chemin. Ce sont des concepts, pas des fichiers.
 -   **NON-CONFORME** : Au moins un fichier est introuvable dans toute l'arborescence.
 
 ## 📤 FORMAT DE SORTIE (IMPÉRATIF)

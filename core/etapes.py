@@ -223,9 +223,8 @@ class EtapeManager:
         def normalize_name(name: str) -> str:
             """Normalise un nom de fichier en retirant dots/hyphens/underscores et en lowercase."""
             stem = name.rsplit('.', 1)[0] if '.' in name else name  # Retirer l'extension
-            ext = name.rsplit('.', 1)[1] if '.' in name else ''
             normalized = stem.replace('.', '').replace('-', '').replace('_', '').lower()
-            return f"{normalized}.{ext}" if ext else normalized
+            return normalized
         
         # Trouver le dossier parent attendu et vérifier son contenu
         target = Path(clean_path)
@@ -367,9 +366,15 @@ class EtapeManager:
                         # Skip les extraits de code JS/TS fréquents (faux positifs pour des fichiers)
                         code_snippets = {
                             'express.json', 'express.urlencoded', 'cors()', 'helmet()', 'morgan()',
-                            'NextFunction', 'Request', 'Response', 'app.use', 'connectDB()', 'errorHandler'
+                            'NextFunction', 'Request', 'Response', 'app.use', 'connectDB()', 'errorHandler',
+                            'CRUD', 'Model', 'Schema', 'z.object', 'z.string'
                         }
                         if item in code_snippets or item.endswith('()'):
+                            continue
+                            
+                        # Skip les "Concepts" PascalCase (ex: `Article`) qui ne sont pas des chemins
+                        # (Commence par Majuscule, pas de '/', pas d'extension '.' évidente)
+                        if item and item[0].isupper() and '/' not in item and '.' not in item:
                             continue
                         
                         # On vérifie si c'est un fichier OU une dépendance
