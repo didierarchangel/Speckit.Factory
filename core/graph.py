@@ -348,24 +348,6 @@ class SpecGraphManager:
         
         return {"validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON"}
 
-    def typescript_node(self, state: AgentState) -> dict:
-        """Nœud : Validation TypeScript pré-emptive."""
-        code = state.get("code_to_verify", "")
-        if not code:
-            return {"validation_status": "TS_OK"}
-            
-        is_valid, errors = self._validate_typescript(code, state["target_task"])
-        if not is_valid:
-            new_error_count = state.get("error_count", 0) + 1
-            logger.warning(f"⚠️ Validation TypeScript échouée ({new_error_count}/3).")
-            return {
-                "validation_status": "REJETÉ",
-                "feedback_correction": f"TypeScript Errors:\n{errors}",
-                "error_count": new_error_count,
-                "terminal_diagnostics": errors
-            }
-        
-        return {"validation_status": "TS_OK"}
 
     def verify_node(self, state: AgentState) -> dict:
         """Nœud 3 : Audit de sécurité et conformité finale."""
@@ -613,18 +595,6 @@ class SpecGraphManager:
                 reports.append(f"TS {d.name}: {'✅' if res.returncode==0 else '❌'}\n{res.stdout}")
         return {"terminal_diagnostics": "\n".join(reports)}
 
-    def route_after_ts(self, state: AgentState) -> str:
-        if state["validation_status"] == "REJETÉ":
-            if state.get("error_count", 0) >= MAX_RETRIES:
-                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec TypeScript.")
-                return "verify_node" # On va vers verify pour le constat final
-            
-            # Si on a des erreurs typées, on tente BuildFix
-            if state.get("terminal_diagnostics"):
-                return "buildfix_node"
-            return "impl_node"
-        return "diagnostic_node"
-
     def route_after_impl(self, state: AgentState) -> str:
         if state["validation_status"] == "REJETÉ":
             if state.get("error_count", 0) >= MAX_RETRIES:
@@ -641,6 +611,11 @@ class SpecGraphManager:
             return "impl_node"
         return "verify_node"
 
+    def route_after_verify(self, state: AgentState) -> str:
+        if state.get("validation_status") == "APPROUVÉ" or state.get("error_count", 0) >= MAX_RETRIES:
+            return END
+        return "impl_node"
+
     def _build_graph(self):
         self.graph_builder.add_node("analysis_node", self.analysis_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
@@ -648,7 +623,6 @@ class SpecGraphManager:
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
         self.graph_builder.add_node("install_deps_node", self.install_deps_node)
-        self.graph_builder.add_node("typescript_node", self.typescript_node)
         self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
         self.graph_builder.add_node("buildfix_node", self.buildfix_node)
         self.graph_builder.add_node("task_enforcer_node", self.task_enforcer_node)
@@ -662,9 +636,7 @@ class SpecGraphManager:
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"})
         
         self.graph_builder.add_edge("persist_node", "install_deps_node")
-        self.graph_builder.add_edge("install_deps_node", "typescript_node")
-        
-        self.graph_builder.add_conditional_edges("typescript_node", self.route_after_ts, {"impl_node": "impl_node", "diagnostic_node": "diagnostic_node", "verify_node": "verify_node"})
+        self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
         
         self.graph_builder.add_conditional_edges("diagnostic_node", self.route_after_diagnostic, {"buildfix_node": "buildfix_node", "task_enforcer_node": "task_enforcer_node"})
         self.graph_builder.add_edge("buildfix_node", "diagnostic_node")
