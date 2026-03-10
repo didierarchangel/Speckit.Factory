@@ -31,10 +31,17 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 1️⃣ JSON invalide → reconstruire le fichier
 2️⃣ tsconfig incorrect → reset minimal
 3️⃣ dépendance manquante → modifier package.json
-4️⃣ import cassé → corriger chemin
+4️⃣ import cassé → corriger chemin (LIRE STRICTEMENT LE FILE TREE)
 5️⃣ logique TS → corriger types
 6️⃣ Script npm manquant → ajouter dans package.json scripts
 7️⃣ Structure manquante → créer le fichier/dossier
+
+# RÈGLES STRICTES SUR LES IMPORTS LOCAUX TYPESCRIPT (ERREUR FRÉQUENTE)
+Si l'erreur TSC indique `Cannot find module '../middlewares/...'` :
+- NE DEVINNE PAS LE NOM DU FICHIER AU HASARD ! Va lire la section "3. FILE TREE".
+- Utilise EXACTEMENT le nom défini sur le disque dur. (Ex: `validationMiddleware` avec un seul `d`).
+- Modifie les fichiers qui contiennent le mauvais import pour qu'ils correspondent à la réalité de l'arborescence.
+- Regarde la "4. SEMANTIC CODE MAP" pour vérifier ce que le fichier exporte réellement (pour corriger `has no exported member 'validate'`).
 
 # RÉPARATION STRUCTURELLE (FEEDBACK TASK ENFORCER)
 Si {feedback_correction} contient "MANQUANT:", tu dois :

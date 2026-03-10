@@ -728,7 +728,7 @@ def run(task, component, provider, model, instruction):
             click.echo(f"\n✨ Tâche {target_id} terminée avec succès.")
         else:
             click.echo("\n" + "!"*50)
-            click.echo("❌ ÉCHEC DE L'AUDIT")
+            click.echo("❌ ÉCHEC DE L'AUDIT" if not audit_approved else "⚠️ SUCCÈS PARTIEL (Erreurs au Build)")
             click.echo("!"*50)
             if not audit_approved:
                 click.echo(f"Raison Audit : {final_state.get('alertes', 'Aucune alerte')}")
@@ -737,6 +737,15 @@ def run(task, component, provider, model, instruction):
                     click.echo(f"Action corrective : {feedback}")
             if not task_complete:
                 click.echo(f"Raison Checklist : {checked_count}/{total_count} sous-tâches validées")
+                
+            # Loguer les erreurs TypeScript brutes pour que l'utilisateur puisse les voir
+            terminal_errors = final_state.get('terminal_diagnostics', '')
+            if terminal_errors and "❌ ÉCHEC" in terminal_errors:
+                click.echo("\n🔍 DÉTAILS DES ERREURS TYPESCRIPT :")
+                click.echo("-" * 40)
+                click.echo(terminal_errors)
+                click.echo("-" * 40)
+                
             click.echo("!"*50 + "\n")
         
     except Exception as e:
