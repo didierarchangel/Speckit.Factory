@@ -304,14 +304,28 @@ class EtapeManager:
                     missing_items = []
                     
                     for item in items_to_check:
+                        # Skip les glob patterns (src/**/* , *.ts, etc.)
+                        if '*' in item:
+                            continue
+                        
+                        # Skip les valeurs de config (CommonJS, ES2022, strict, etc.)
+                        config_keywords = {'CommonJS', 'ES2022', 'ES2021', 'ES2020', 'ESNext', 
+                                          'strict', 'true', 'false', 'node', 'commonjs',
+                                          'dist', 'src', 'rootDir', 'outDir', 'target', 'module',
+                                          'include', 'exclude', 'compilerOptions'}
+                        if item in config_keywords:
+                            continue
+                        
+                        # Skip les flags CLI (-y, --save, --dev, etc.)
+                        if item.startswith('-'):
+                            continue
+                        
                         # Skip les commandes shell (contiennent des espaces ou commencent par npm/npx)
-                        if ' ' in item or item.startswith(('npm ', 'npx ', 'node ')):
+                        if ' ' in item or item.startswith(('npm ', 'npx ', 'node ', 'yarn ')):
                             # Mapping commande → artefact produit
-                            if 'npm init' in item:
-                                # npm init -y produit un package.json
+                            if 'npm init' in item or 'yarn init' in item:
                                 if self._file_exists(check_root, 'package.json') or self._file_exists(check_root, 'backend/package.json'):
-                                    continue  # OK, le package.json existe
-                            # Commandes non mappées → on les considère OK (pas vérifiables sur disque)
+                                    continue
                             continue
                         
                         # Skip les noms de scripts npm (dev, build, start, test)
