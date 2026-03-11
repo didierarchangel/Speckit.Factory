@@ -588,10 +588,10 @@ class SpecGraphManager:
                     subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
                     # Sauvegarder le hash après une installation réussie
                     self._save_package_hash(pkg_path, current_hash)
-            except Exception as e:
-                logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
-                # Ne pas sauvegarder le hash si l'installation a échoué
-                continue
+                except Exception as e:
+                    logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
+                    # Ne pas sauvegarder le hash si l'installation a échoué
+                    continue
             
             # ─── DÉTECTION DES DÉPENDANCES CROSS-MODULE ───
             if target_module:
