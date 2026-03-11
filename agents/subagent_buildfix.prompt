@@ -53,12 +53,85 @@ Si l'erreur TSC indique `Cannot find module '../middlewares/...'` :
 
 # CAS PARTICULIER REACT/VITE (ERREURS FRÉQUENTES EN FRONTEND)
 Si le project est React (dossier `frontend/`) :
-1. **Import avec extension complète** : Corriger `import X from './pages/HomePage.tsx'` → `import X from './pages/HomePage'`
-   Les imports TypeScript/Vite ne doivent PAS inclure l'extension `.tsx` ou `.ts`
-2. **Route manquante** : Vérifier que chaque `<Route>` pointe vers un composant importé valide
-3. **Composant non exporté** : Vérifier que tous les composants utilisés dans App.tsx ou Layout.tsx ont `export default`
-4. **Page manquante dans pages/** : Si HomePage.tsx existe, s'assurer qu'il est importé SANS .tsx dans App.tsx
-5. **JSX/TSX pas reconnu** : Vérifier que tsconfig.json contient `"jsx": "react-jsx"` ou `"jsx": "react"`
+
+## 1. Import/Export Errors (PRIORITÉ HAUTE)
+**Problème**: `Cannot find module` ou `Module not found`
+- Import avec extension complète : Corriger `import X from './pages/HomePage.tsx'` → `import X from './pages/HomePage'`
+  Les imports TypeScript/Vite ne doivent PAS inclure l'extension `.tsx` ou `.ts`
+- Composant non exporté : Vérifier que tous les composants utilisés ont `export default` ou `export const ComponentName`
+  - ✅ Correct: `export default function HomePage() { return ... }`
+  - ❌ Incorrect: `function HomePage() { return ... }` (no export)
+- Chemins relatifs cassés : Utiliser `../../components/Button` pas `../components/Button` si structure profonde
+  - Lire strictement le FILE TREE pour voir la structure réelle
+
+## 2. JSX/TSX Rendering Errors
+**Problème**: `JSX element is missing closing tag` ou `Expected JSX closing tag for <Component>`
+- Vérifier que TOUS les tags JSX ont fermeture : `<Component></Component>` ou `<Component />`
+- Vérifier les attributs : `<input disabled />` pas `<input disabled></input>`
+- React fragments : `<> ... </>` pour envelopper plusieurs éléments sans div
+
+## 3. Hook Usage Errors (React Hooks)
+**Problème**: `React Hook "useState" is called conditionally` ou `Hook called outside component`
+- Tous les hooks (useState, useEffect, etc.) DOIVENT être:
+  - Au niveau racine du composant, PAS dans des conditions ou boucles
+  - Seuls les composants React peuvent utiliser les hooks (pas de code JS brut)
+  - Exemple: ✅ `const [count, setCount] = useState(0);` (au début du composant)
+  - Exemple: ❌ `if (condition) useState(0);` (conditionnel = ERREUR)
+
+## 4. Props Type Errors (TypeScript + React)
+**Problème**: `TS2322: Type 'string' is not assignable to type 'number'` dans des props
+- Corriger les types des props : `interface Props { count: number }` pas `{ count: string }`
+- Optional props : `interface Props { title?: string }` (avec ?)
+- Children prop : `interface Props { children: React.ReactNode }`
+
+## 5. Missing React Import (Fichiers TSX)
+**Problème**: `React is not defined` (rare en React 17+, mais possible)
+- Vérifier que fichiers `.tsx` n'ont PAS la ligne `import React from 'react'` inutile
+- Exception: Si le fichier utilise `React.ReactNode` ou `React.FC`, il FAUT `import React`
+- Modern React: Import pas nécessaire pour `function Component() {}`
+
+## 6. Route/Navigation Errors
+**Problème**: `<Route>` ou navigation cassée
+- React-Router v6 : Routes doivent être dans `<Routes>` wrapper
+  - ✅ Correct: `<Routes><Route path="/" element={<Home />} /></Routes>`
+  - ❌ Incorrect: `<Route path="/" component={Home} />` (v6 utilise `element`)
+- Path typos : Corriger `/pages/home` → `/` ou `/home` selon les routes définies
+- Element must be component : `<Route path="/" element={<HomePage />} />` pas `element={HomePage}`
+
+## 7. CSS/Style Import Problems
+**Problème**: `Cannot find module './styles.css'`
+- Importer correctement : `import './styles.css'` ou `import styles from './styles.module.css'`
+- Vite recognizes: `.css`, `.scss`, `.sass`, `.less`, `.styl` (with plugins)
+- CSS Modules : Utiliser `styles.className` pas `className={styles}` pour accéder
+
+## 8. Context Provider Errors
+**Problème**: `useContext` retourne `undefined` ou context not working
+- Context DOIT wrappé le composant : `<Provider><App /></Provider>` 
+- Consumer doit être ENFANT du Provider, pas frère
+- Vérifier que Provider exporte le context : `export const MyContext = createContext()`
+
+## 9. Event Handler Type Errors
+**Problème**: `TS2769: No overload matches this call` pour onClick, onChange, etc.
+- Typer correctement les handlers :
+  - ✅ Correct: `onClick={(e: React.MouseEvent) => handleClick(e)}`
+  - ✅ Correct: `onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleChange(e.target.value)}`
+  - ❌ Incorrect: `onClick={handleClick()}` (appel au lieu de référence)
+
+## 10. Component Memoization Issues
+**Problème**: React.memo ou useMemo causing type errors
+- Typer correctement : `const Component = React.memo((props: Props) => { ... })`
+- useMemo dependencies : Dépendances EXACTES du calcul, pas vides `[]`
+
+## vite.config & tsconfig Setup
+- **vite.config.ts** doit avoir :
+  ```javascript
+  import react from '@vitejs/plugin-react'
+  export default {{ plugins: [react()], server: {{ port: 3000 }} }}
+  ```
+- **tsconfig.json** pour React+Vite :
+  ```json
+  {{ "compilerOptions": {{ "jsx": "react-jsx", "lib": ["ES2020", "DOM"] }} }}
+  ```
 
 # CAS PARTICULIER NEXT.JS (ERREURS FRÉQUENTES EN FRONTEND)
 Si le project est Next.js (vérifier `next.config.ts` ou `next.config.js`) :
