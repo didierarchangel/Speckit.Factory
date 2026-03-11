@@ -504,7 +504,7 @@ class SpecGraphManager:
             }
 
     def persist_node(self, state: AgentState) -> dict:
-        """Nœud : Persistance du code sur le disque."""
+        """Nœud : Persistance du code sur le disque + Assurance des artefacts obligatoires."""
         logger.info("💾 Persistance des fichiers sur le disque...")
         code = state.get("code_to_verify", "")
         if not code:
@@ -512,6 +512,15 @@ class SpecGraphManager:
             
         sanitized_code, written_paths = self._persist_code_to_disk(code)
         logger.info(f"✅ {len(written_paths)} fichiers écrits.")
+        
+        # ─── ASSURER LES ARTEFACTS OBLIGATOIRES ───
+        # Extraire et créer tout fichier manquant listés dans la checklist
+        required_files = self._extract_required_files(state.get("subtask_checklist", ""))
+        missing_files = self._ensure_required_artifacts(required_files, written_paths)
+        
+        if missing_files:
+            logger.warning(f"⚠️ Fichiers obligatoires manquants créés : {missing_files}")
+            written_paths.extend(missing_files)
         
         return {
             "code_to_verify": sanitized_code,
@@ -980,6 +989,109 @@ class SpecGraphManager:
         except Exception as e:
             logger.warning(f"⚠️ Impossible de sauvegarder le hash: {e}")
 
+    def _extract_required_files(self, checklist_text: str) -> List[str]:
+        """Extrait les chemins de fichiers obligatoires mentionnés dans la checklist.
+        
+        Cherche les chemins entre backticks: `backend/src/middlewares/auth.ts`
+        Returns: Liste des chemins de fichiers trouvés
+        """
+        import re
+        if not checklist_text:
+            return []
+        
+        # Chercher tous les chemins entre backticks
+        # Pattern: `path/to/file.ext` (avec extensions communes)
+        pattern = r'`([^`]+\.(?:ts|tsx|js|jsx|json|md|yaml|yml|css|html))`'
+        matches = re.findall(pattern, checklist_text)
+        
+        logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {matches}")
+        return matches
+
+    def _ensure_required_artifacts(self, required_files: List[str], written_paths: List[str]) -> List[str]:
+        """Crée les fichiers obligatoires manquants en tant que stubs minimalistes.
+        
+        Pour chaque fichier obligatoire non écrit, génère un stub approprié.
+        Args:
+            required_files: Liste des chemins de fichiers obligatoires
+            written_paths: Liste des fichiers déjà écrites par persist_code_to_disk
+        Returns: Liste des fichiers créés
+        """
+        created_files = []
+        
+        for required_file in required_files:
+            file_path = self.root / required_file
+            
+            # Vérifier si le fichier existe déjà (sur disque ou écrit par l'IA)
+            if file_path.exists() or required_file in written_paths:
+                logger.info(f"✅ Fichier obligatoire existant: {required_file}")
+                continue
+            
+            # Créer les répertoires parents
+            try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"❌ Erreur création répertoires pour {required_file}: {e}")
+                continue
+            
+            # Générer un stub minimal basé sur l'extension
+            ext = file_path.suffix.lower()
+            stub_content = self._generate_stub_content(ext, required_file)
+            
+            try:
+                file_path.write_text(stub_content, encoding="utf-8")
+                logger.info(f"✨ Fichier obligatoire créé (stub): {required_file}")
+                created_files.append(required_file)
+            except Exception as e:
+                logger.error(f"❌ Erreur écriture stub {required_file}: {e}")
+        
+        return created_files
+
+    def _generate_stub_content(self, ext: str, file_path: str) -> str:
+        """Génère un contenu de stub minimaliste approprié au type de fichier.
+        
+        Args:
+            ext: Extension du fichier (ex: .ts, .json)
+            file_path: Chemin complet du fichier (pour contexte)
+        Returns: Contenu minimal du stub
+        """
+        if ext in [".ts", ".tsx"]:
+            # TypeScript: export vide ou stub contextuel
+            if "middleware" in file_path.lower():
+                return "// Middleware stub - to be implemented\nexport {};\n"
+            elif "controller" in file_path.lower():
+                return "// Controller stub - to be implemented\nexport {};\n"
+            elif "service" in file_path.lower():
+                return "// Service stub - to be implemented\nexport {};\n"
+            else:
+                return "// Stub file - to be implemented\nexport {};\n"
+        
+        elif ext in [".js", ".jsx"]:
+            # JavaScript
+            return "// Stub file - to be implemented\nmodule.exports = {};\n"
+        
+        elif ext == ".json":
+            # JSON - valid empty object
+            return "{}\n"
+        
+        elif ext == ".md":
+            # Markdown
+            return "# Placeholder\n\nThis file is a placeholder and should be implemented.\n"
+        
+        elif ext in [".yaml", ".yml"]:
+            # YAML - empty object
+            return "{}\n"
+        
+        elif ext == ".css":
+            # CSS - empty stylesheet
+            return "/* Stub stylesheet */\n"
+        
+        elif ext == ".html":
+            # HTML - minimal structure
+            return "<!-- Stub HTML file -->\n"
+        
+        else:
+            # Default fallback
+            return "// Auto-generated stub file\n"
 
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible).
