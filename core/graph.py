@@ -254,7 +254,37 @@ class SpecGraphManager:
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'ajouter la tâche cross-module : {e}")
 
-
+    def _invoke_with_retry(self, chain, invoke_dict: dict, max_attempts: int = 3):
+        """🛡️ Appelle la chaîne LLM avec retry + exponential backoff pour éviter les erreurs réseau.
+        
+        Args:
+            chain: La chaîne LangChain à invoquer
+            invoke_dict: Variables à passer à la chaîne
+            max_attempts: Nombre maximum de tentatives (default: 3)
+            
+        Returns:
+            La sortie brute de chain.invoke()
+            
+        Raises:
+            Exception: Si toutes les tentatives échouent
+        """
+        import time
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/{max_attempts})...")
+                result = chain.invoke(invoke_dict)
+                logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                return result
+            except Exception as e:
+                if attempt < max_attempts - 1:
+                    # Backoff exponentiel : 1s, 2s, 4s, etc.
+                    wait_time = 2 ** attempt
+                    logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                    time.sleep(wait_time)
+                else:
+                    # Dernière tentative échouée
+                    logger.error(f"❌ Toutes les {max_attempts} tentatives ont échoué.")
+                    raise
 
     def _load_prompt(self, filename: str) -> str:
         """Charge le contenu d'un fichier prompt."""
@@ -384,7 +414,7 @@ class SpecGraphManager:
             import concurrent.futures
             
             def run_chain():
-                return chain.invoke({
+                return self._invoke_with_retry(chain, {
                     "constitution_content": state["constitution_content"],
                     "current_step": state["current_step"],
                     "completed_tasks_summary": state["completed_tasks_summary"],
@@ -481,32 +511,27 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            import concurrent.futures
+            # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
+            invoke_dict = {
+                "constitution_hash": state.get("constitution_hash", "INCONNU"),
+                "constitution_content": state["constitution_content"],
+                "current_step": state["current_step"],
+                "completed_tasks_summary": state["completed_tasks_summary"],
+                "pending_tasks": state["pending_tasks"],
+                "target_task": state["target_task"],
+                "analysis_output": state["analysis_output"],
+                "feedback_correction": state.get("feedback_correction", ""),
+                "terminal_diagnostics": state.get("terminal_diagnostics", ""),
+                "code_map": state.get("code_map", "Non générée"),
+                "file_tree": state.get("file_tree", "Non générée"),
+                "design_spec": state.get("design_spec", "Non générée"),
+                "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
+                "user_instruction": state.get("user_instruction", ""),
+                "existing_code_snapshot": existing_snapshot,
+                "format_instructions": parser.get_format_instructions()
+            }
             
-            def run_chain():
-                return chain.invoke({
-                    "constitution_hash": state.get("constitution_hash", "INCONNU"),
-                    "constitution_content": state["constitution_content"],
-                    "current_step": state["current_step"],
-                    "completed_tasks_summary": state["completed_tasks_summary"],
-                    "pending_tasks": state["pending_tasks"],
-                    "target_task": state["target_task"],
-                    "analysis_output": state["analysis_output"],
-                    "feedback_correction": state.get("feedback_correction", ""),
-                    "terminal_diagnostics": state.get("terminal_diagnostics", ""),
-                    "code_map": state.get("code_map", "Non générée"),
-                    "file_tree": state.get("file_tree", "Non générée"),
-                    "design_spec": state.get("design_spec", "Non générée"),
-                    "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
-                    "user_instruction": state.get("user_instruction", ""),
-                    "existing_code_snapshot": existing_snapshot,
-                    "format_instructions": parser.get_format_instructions()
-                })
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_chain)
-                # Hard timeout de 150 secondes sur la génération de code (car plus long)
-                raw_output = future.result(timeout=150)
+            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             new_code = result.get("code", "")
@@ -1111,7 +1136,14 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            raw_output = chain.invoke({
+            # 🛡️ IMPROVED: Capturer l'état de génération AVANT l'audit
+            generation_failed = state.get("validation_status") == "REJETÉ" or state.get("last_error", "")
+            structure_valid = state.get("validation_status") in ["STRUCTURE_OK", "DEPS_INSTALLED", "GENERATED"]
+            
+            logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
+            
+            # 🛡️ RETRY avec backoff pour l'audit lui-même
+            invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
@@ -1125,13 +1157,28 @@ class SpecGraphManager:
                 "file_tree": state["file_tree"],
                 "code_map": state["code_map"],
                 "format_instructions": parser.get_format_instructions()
-            })
+            }
+            
+            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
-            status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
-            
+            verifier_status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
             final_score = int(result.get("score_conformite", 0))
+            
+            # 🛡️ IMPROVED AUDIT LOGIC:
+            # - Si génération échouée ET structure invalide → REJETÉ
+            # - Sinon, on accepte le verdict du verifier
+            if generation_failed and not structure_valid:
+                logger.warning(f"⚠️ Génération échouée ET structure invalide → REJET")
+                status = "REJETÉ"
+                feedback_msg = f"Generation erro detected and structure is invalid. {result.get('action_corrective', '')}"
+            else:
+                status = verifier_status
+                feedback_msg = result.get('action_corrective', '') if verifier_status == "REJETÉ" else ""
+                if generation_failed and structure_valid:
+                    logger.warning(f"⚠️ Génération échouée MAIS structure valide → APPROUVÉ avec alerte")
+                    logger.info(f"✅ Au moins la structure demandée a été générée correctement.")
             
             if status == "APPROUVÉ":
                 logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")
@@ -1139,7 +1186,7 @@ class SpecGraphManager:
                     "validation_status": "APPROUVÉ", 
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
-                    "alertes": result.get('alertes', 'Aucune.'),
+                    "alertes": result.get('alertes', 'Aucune.' if not generation_failed else 'Génération partiellement échouée Mais structure valide.'),
                     "feedback_correction": ""
                 }
             else:
@@ -1149,7 +1196,7 @@ class SpecGraphManager:
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', ''),
-                    "feedback_correction": result["action_corrective"],
+                    "feedback_correction": feedback_msg,
                     "error_count": new_error_count
                 }
         except Exception as e:
