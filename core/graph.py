@@ -67,6 +67,9 @@ class AgentState(TypedDict):
     missing_modules: List[str]
     deps_attempts: int
     
+    # Erreurs détectées dans les modules non-cibles (pour éviter boucles)
+    non_target_errors: dict  # {module_name: error_type}
+    
     # Statistiques de complétion (via TaskEnforcer)
     total_subtasks: int
     missing_subtasks: int
@@ -979,7 +982,11 @@ class SpecGraphManager:
 
 
     def diagnostic_node(self, state: AgentState) -> dict:
-        """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible)."""
+        """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible).
+        
+        ⚠️ PROTECTION STRICTE : Si target_module est défini, teste UNIQUEMENT ce module.
+        Ignore complètement les autres modules.
+        """
         logger.info("🔍 Exécution des diagnostics réels...")
         import subprocess, re, json
         
@@ -989,13 +996,15 @@ class SpecGraphManager:
         if target_module:
             # Un module cible est explicitement spécifié
             search_dirs = [self.root / target_module]
-            logger.info(f"📍 Diagnostics pour le module : {target_module}")
+            logger.info(f"📍 Diagnostics STRICT : module {target_module} seulement (autres ignorés)")
         else:
             # Fallback : tous les modules disponibles
             search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+            logger.info(f"📍 Diagnostics sur tous les modules")
         
         reports = []
         missing_modules = []
+        module_errors = {}  # Tracker les erreurs par module
         
         for d in search_dirs:
             if not (d / "package.json").exists():
@@ -1022,14 +1031,21 @@ class SpecGraphManager:
                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
                     reports.append(f"[TSC {d.name}] {status}\n{output}")
                     
-                    # Détection des modules manquants
-                    matches = re.findall(r"Cannot find module '([^']+)'", output)
-                    if matches:
-                        npm_matches = [
-                            m for m in matches 
-                            if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
-                        ]
-                        missing_modules.extend(npm_matches)
+                    # ⚠️ Tracker si c'est le module cible
+                    if res.returncode != 0:
+                        module_errors[d.name or "root"] = "tsc"
+                    
+                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    if target_module and d.name != target_module:
+                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                    else:
+                        matches = re.findall(r"Cannot find module '([^']+)'", output)
+                        if matches:
+                            npm_matches = [
+                                m for m in matches 
+                                if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
+                            ]
+                            missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
@@ -1048,14 +1064,21 @@ class SpecGraphManager:
                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
                     reports.append(f"[VITE {d.name}] {status}\n{output}")
                     
-                    # Détection des modules manquants (même pattern)
-                    matches = re.findall(r"Cannot find module '([^']+)'", output)
-                    if matches:
-                        npm_matches = [
-                            m for m in matches 
-                            if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
-                        ]
-                        missing_modules.extend(npm_matches)
+                    # ⚠️ Tracker si c'est le module cible
+                    if res.returncode != 0:
+                        module_errors[d.name or "root"] = "vite"
+                    
+                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    if target_module and d.name != target_module:
+                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                    else:
+                        matches = re.findall(r"Cannot find module '([^']+)'", output)
+                        if matches:
+                            npm_matches = [
+                                m for m in matches 
+                                if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
+                            ]
+                            missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\nTimeout après 120s")
@@ -1063,9 +1086,16 @@ class SpecGraphManager:
                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\n{str(e)}")
         
         logger.info("🛠️ Diagnostics terminés.")
+        
+        # ⚠️ Si target_module est défini, retourner AUSSI info sur les erreurs non-target
+        non_target_errors = {k: v for k, v in module_errors.items() if k != target_module}
+        if non_target_errors and target_module:
+            logger.warning(f"⚠️ Erreurs détectées dans modules non-cibles (IGNORÉES): {non_target_errors}")
+        
         return {
             "terminal_diagnostics": "\n".join(reports),
-            "missing_modules": list(set(missing_modules))
+            "missing_modules": list(set(missing_modules)),
+            "non_target_errors": non_target_errors  # Pour éviter buildfix sur ces erreurs
         }
     
     def dependency_resolver_node(self, state: AgentState) -> dict:
@@ -1182,12 +1212,30 @@ class SpecGraphManager:
         return "persist_node"
 
     def route_after_enf(self, state: AgentState) -> str:
-        """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles."""
-        has_tsc_errors = "❌ ÉCHEC" in state.get("terminal_diagnostics", "")
+        """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles.
+        
+        ⚠️ PROTECTION STRICTE : Ignore les erreurs dans les modules non-cibles.
+        """
+        target_module = state.get("target_module")
+        terminal_diag = state.get("terminal_diagnostics", "")
+        
+        # ⚠️ Extraction des erreurs cibles vs non-cibles
+        non_target_errors = state.get("non_target_errors", {})
+        target_module_in_errors = target_module in non_target_errors or (not target_module and "root" in non_target_errors)
+        
+        # Vérifier si TSC est réussie POUR LE MODULE CIBLE
+        has_tsc_errors_in_target = False
+        if target_module:
+            # Chercher seulement "[TSC backend]" ou "[VITE backend]" dans les rapports
+            has_tsc_errors_in_target = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag
+            logger.info(f"📍 Erreurs TSC dans module cible ({target_module}): {has_tsc_errors_in_target}")
+        else:
+            has_tsc_errors_in_target = "❌ ÉCHEC" in terminal_diag
+        
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         has_missing_modules = len(state.get("missing_modules", [])) > 0
         
-        if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors or has_structure_errors or has_missing_modules):
+        if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors_in_target or has_structure_errors or has_missing_modules):
             logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
             return "verify_node"
             
@@ -1199,16 +1247,19 @@ class SpecGraphManager:
                 return "install_deps_node"
             else:
                 logger.error(f"⚠️ Auto-installation a échoué 3 fois pour {state.get('missing_modules')}. Délégation à l'IA.")
-                # On passe à buildfix_node pour que l'IA tente de comprendre pourquoi tsc plante
                 pass
             
         if has_structure_errors:
             logger.warning("🔨 Manque de fichiers structuraux : route vers impl_node (PATCH).")
             return "impl_node"
             
-        if has_tsc_errors:
-            logger.warning("🐛 Erreurs TypeScript : route vers buildfix_node.")
+        # ⚠️ CHANGE : Ne déclencher buildfix QUE si la cible a des erreurs
+        if has_tsc_errors_in_target:
+            logger.warning(f"🐛 Erreurs TypeScript dans module cible ({target_module}): route vers buildfix_node.")
             return "buildfix_node"
+        elif target_module and non_target_errors:
+            logger.warning(f"⚠️ Erreurs dans modules non-cibles IGNORÉES: {non_target_errors}. Validation continue.")
+            return "verify_node"
             
         return "verify_node"
 
