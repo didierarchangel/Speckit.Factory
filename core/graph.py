@@ -1038,8 +1038,12 @@ class SpecGraphManager:
     def _extract_required_files(self, checklist_text: str) -> List[str]:
         """Extrait les chemins de fichiers obligatoires mentionnés dans la checklist.
         
-        Cherche les chemins entre backticks: `backend/src/middlewares/auth.ts`
-        Cas spécial: Si un ligne a `fileName` ET `folder/`, les combine en `folder/fileName`
+        Stratégie multi-niveau pour extraire les chemins:
+        
+        Pattern 1: Chemin COMPLET en un seul bloc: `backend/src/middlewares/auth.ts`
+        Pattern 2: Fichier + Répertoire séparés: `RegisterPage.tsx` ... `frontend/src/pages/`
+        Pattern 3: Cas spécial - si le chemin commence par `src/`, ajouter le module prefix
+        
         Returns: Liste des chemins de fichiers trouvés (sans doublons)
         """
         import re
@@ -1047,36 +1051,70 @@ class SpecGraphManager:
             return []
         
         required_files = []
+        seen_full_paths = set()  # Pour éviter les doublons
         
         # Traiter chaque ligne de la checklist
         for line in checklist_text.split('\n'):
             if not line.strip():
                 continue
             
-            # Pattern 1: Chemins complets avec dossier inclus: `folder/path/fileName.ext`
-            full_paths = re.findall(r'`([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)`', line)
+            # Pattern 1: Chemin COMPLET avec module inclus
+            # Cherche: `backend/src/..` ou `frontend/src/...` ou `path/to/file.ext`
+            full_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)`', line)
+            
             for path in full_paths:
-                if path not in required_files:
+                # Normaliser les backslashes en forward slashes
+                path = path.replace('\\', '/')
+                
+                # Vérifier que ce n'est pas un chemin partiel comme "src/..."
+                # (sera traité plus tard avec module detection)
+                if path not in seen_full_paths:
                     required_files.append(path)
+                    seen_full_paths.add(path)
             
-            # Pattern 2: Cas particulier - fileName et répertoire séparés sur la même ligne
-            # Ex: "Créer une page (`HomePage.tsx`) dans `frontend/src/pages/`"
-            file_names = re.findall(r'`([a-zA-Z0-9_\-]+\.[a-zA-Z0-9]+)`', line)
-            directories = re.findall(r'`([a-zA-Z0-9_\-./]+/)`', line)
+            # Pattern 2: Cas particulier - fileName ET répertoire SÉPARÉS sur la même ligne
+            # Exemple: ... `RegisterPage.tsx` ... dans `frontend/src/pages/`
+            # Stratégie: 
+            # - Trouver tous les backtick'd items
+            # - Séparer les fichiers (.ext) des répertoires (contient /)
+            # - Si 1 fichier et >=1 répertoires, combiner
             
-            # Si on a exactement 1 fichier et 1+ répertoires, combiner
-            if len(file_names) == 1 and len(directories) >= 1:
-                filename = file_names[0]
-                # Utiliser le répertoire le plus spécifique (le dernier trouvé)
-                directory = directories[-1] if directories else ""
+            # Extraire TOUS les items entre backticks
+            all_backtick_items = re.findall(r'`([^`]+)`', line)
+            
+            # Classer en fichiers et répertoires
+            files_in_line = []
+            dirs_in_line = []
+            
+            for item in all_backtick_items:
+                item = item.strip()
+                # Vérifier si c'est déjà un chemin complet (contient /)
+                if '/' in item or '\\' in item:
+                    # C'est un chemin (fichier ou répertoire)
+                    item = item.replace('\\', '/')
+                    if item.endswith('/'):
+                        dirs_in_line.append(item)
+                    else:
+                        # C'est un fichier avec chemin
+                        if item not in seen_full_paths:
+                            required_files.append(item)
+                            seen_full_paths.add(item)
+                else:
+                    # C'est potentiellement un fichier (pas de /)
+                    if '.' in item:
+                        files_in_line.append(item)
+            
+            # Si on a exactement 1 fichier SANS chemin et 1+ répertoires, combiner
+            if len(files_in_line) == 1 and len(dirs_in_line) >= 1:
+                filename = files_in_line[0]
+                # Utiliser le répertoire le plus spécifique (le plus long)
+                directory = max(dirs_in_line, key=len)
                 combined_path = f"{directory}{filename}".replace('//', '/')
                 
-                # Vérifier que ce chemin n'a pas déjà été extrait en pattern 1
-                # ET que ce n'est pas un doublon d'un full_path déjà trouvé
-                is_duplicate_of_fullpath = any(fp.endswith(filename) for fp in full_paths)
-                
-                if combined_path not in required_files and not is_duplicate_of_fullpath:
+                # Vérifier que ce chemin n'a pas déjà été extrait
+                if combined_path not in seen_full_paths:
                     required_files.append(combined_path)
+                    seen_full_paths.add(combined_path)
         
         logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
         return required_files
