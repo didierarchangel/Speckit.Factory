@@ -156,6 +156,51 @@ frontend/.speckit_hash    # Tracking des changements de dépendances frontend
 
 ---
 
+## 🎯 Architecture Multi-Module Intelligente
+
+Speckit.Factory détecte automatiquement **quel module** votre tâche cible (`backend`, `frontend`, `mobile`, etc.) et adapte l'exécution en conséquence.
+
+### Comment ça fonctionne :
+
+Quand vous exécutez une tâche comme `03_setup_frontend`, le framework:
+
+1. **Identifie le module cible** : Parse le task ID pour extraire `frontend`
+2. **Limite les installations** : `npm install` s'exécute **uniquement dans `frontend/`**, pas dans `backend/`
+3. **Diagnostique le bon outil** :
+   - Frontend avec Vite ? → Exécute `npm run build` (Vite)
+   - Backend avec TypeScript ? → Exécute `tsc --noEmit` (TypeScript)
+4. **Évite les faux positifs** : Plus de "TypeError TypeScript non installé en backend" quand vous travaillez sur le frontend
+
+### Le Gain pour Vous :
+
+```bash
+# AVANT (bug classique)
+speckit run --task 03_setup_frontend
+❌ Vérifie le backend au lieu du frontend
+❌ Lance npm install backend (inutile)
+❌ Erreur : "TypeScript non installé" dans le mauvais module
+❌ Boucle infinie
+
+# APRÈS (architecture intelligente)
+speckit run --task 03_setup_frontend
+✅ Détecte que c'est du frontend
+✅ npm install frontend uniquement
+✅ Lance vite build (pas tsc)
+✅ Succès en quelques secondes
+```
+
+### Scalabilité :
+
+Grâce à cette approche modulaire, Speckit.Factory peut maintenant gérer des projets complexes avec:
+- ✅ **Backend** + **Frontend** (configuration classique)
+- ✅ **Backend** + **Frontend** + **Mobile** (Monorepo multistacks)
+- ✅ **Microservices** (API Gateway + Services)
+- ✅ **Infrastructure as Code** (Terraform, Docker)
+
+Chaque module a sa Constitution, ses dépendances, et son cycle de vie propre, **complètement isolé**.
+
+---
+
 ## 🛠️ Travailler sur un Projet Existant (Mode Composante)
 
 Si vous utilisez Speckit sur un projet qui contient déjà du code, suivez ce workflow pour ne pas écraser votre travail :

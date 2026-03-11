@@ -35,6 +35,7 @@ class AgentState(TypedDict):
     
     # Cible actuelle
     target_task: str
+    target_module: str  # Module cible extrait du task ID (backend/frontend/mobile/None)
     
     # Résultats des nœuds
     analysis_output: str
@@ -103,6 +104,52 @@ class SpecGraphManager:
                 count += 1
         if count > 0:
             logger.info(f"📁 Structure de dossiers garantie ({count} dossiers créés).")
+
+    def _extract_target_module(self, task_id: str) -> str:
+        """Extrait le module cible (backend/frontend/mobile) du task ID.
+        
+        Exemples:
+        - "02_setup_backend" → "backend"
+        - "03_setup_frontend" → "frontend"
+        - "04_setup_mobile" → "mobile"
+        - "05_feature_dashboard" → None (utilise tous les modules)
+        """
+        import re
+        # Pattern: 02_setup_backend, 03_setup_frontend, etc.
+        match = re.search(r"_(backend|frontend|mobile|api|infra|docs)", task_id, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+        
+        # Fallback: stratégie heuristique basée sur le numéro
+        # 01-02 = backend, 03-04 = frontend, etc.
+        match = re.match(r"(\d+)", task_id)
+        if match:
+            step_num = int(match.group(1))
+            if step_num <= 2:
+                return "backend"
+            elif step_num <= 4:
+                return "frontend"
+        
+        # Default: None (tous les modules)
+        return None
+
+    def _get_build_tool(self, target_module: str) -> str:
+        """Détecte le bon outil de build selon le module.
+        
+        - backend → TypeScript (tsc)
+        - frontend → Vite ou TypeScript
+        - mobile → TypeScript ou autre
+        """
+        if target_module == "frontend":
+            # Vérifier si vite.config.ts existe
+            if (self.root / "frontend" / "vite.config.ts").exists():
+                return "vite"
+            # Fallback à TypeScript
+            return "tsc"
+        
+        # Par défaut, utiliser TypeScript
+        return "tsc"
+
 
     def _load_prompt(self, filename: str) -> str:
         """Charge le contenu d'un fichier prompt."""
@@ -212,6 +259,11 @@ class SpecGraphManager:
         """Nœud 1 : Analyse de conformité et segmentation."""
         logger.info(f"🔍 Début de l'Analyse pour la tâche : {state['target_task']}")
         
+        # ─── EXTRACTION DU MODULE CIBLE ───
+        target_module = self._extract_target_module(state["target_task"])
+        if target_module:
+            logger.info(f"📍 Module cible identifié : {target_module}")
+        
         prompt_text = self._load_prompt("subagent_analysis.prompt")
         
         # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
@@ -251,7 +303,12 @@ class SpecGraphManager:
                 f"Intégrité: {result['alerte_integrite']}"
             )
             logger.info("✅ Analyse terminée.")
-            return {"analysis_output": analysis_str, "feedback_correction": "", "error_count": 0}
+            return {
+                "analysis_output": analysis_str,
+                "feedback_correction": "",
+                "error_count": 0,
+                "target_module": target_module  # Passer le module cible au graphe
+            }
         except ValueError as e:
             error_msg = f"Réponse IA corrompue (Analysis JSON) : {str(e)}"
             logger.error(f"❌ {error_msg}")
@@ -395,8 +452,17 @@ class SpecGraphManager:
         import subprocess, json, re
         logger.info("📦 Installation des dépendances (npm install)...")
         
+        # ─── DÉTERMINER LES RÉPERTOIRES CIBLES ───
+        target_module = state.get("target_module")
+        if target_module:
+            # Si un module cible est spécifié, n'installer que dans ce module
+            search_dirs = [self.root / target_module]
+            logger.info(f"📍 Installation limitée au module : {target_module}")
+        else:
+            # Fallback : tous les modules
+            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        
         found_pkg = False
-        search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
         
         for target_dir in search_dirs:
             pkg_path = target_dir / "package.json"
@@ -471,7 +537,6 @@ class SpecGraphManager:
                 continue
             
             # Extraire les noms de packages des backticks dans la checklist
-            # Suppression de IGNORECASE pour éviter de capturer "Article" comme package
             checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist))
             
             # Filtrer : garder seulement ce qui ressemble à un package npm
@@ -805,15 +870,33 @@ class SpecGraphManager:
 
 
     def diagnostic_node(self, state: AgentState) -> dict:
-        """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""
+        """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible)."""
         logger.info("🔍 Exécution des diagnostics réels...")
         import subprocess, re, json
+        
+        # ─── DÉTERMINER LE MODULE CIBLE ET L'OUTIL DE BUILD ───
+        target_module = state.get("target_module")
+        
+        if target_module:
+            # Un module cible est explicitement spécifié
+            search_dirs = [self.root / target_module]
+            logger.info(f"📍 Diagnostics pour le module : {target_module}")
+        else:
+            # Fallback : tous les modules disponibles
+            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        
         reports = []
         missing_modules = []
         
-        for d in [self.root, self.root / "backend", self.root / "frontend"]:
-            if (d / "package.json").exists():
-                # ─── VÉRIFICATION PRE-TSC : typescript installé? ───
+        for d in search_dirs:
+            if not (d / "package.json").exists():
+                continue
+            
+            # ─── Déterminer l'outil de build ───
+            build_tool = self._get_build_tool(d.name if d != self.root else "")
+            
+            # ─── VÉRIFICATION PRE-TSC : typescript installé? ───
+            if build_tool == "tsc":
                 if not self._check_typescript_installed(d):
                     logger.warning(f"⚠️ TypeScript non installé dans {d.name}. Ajout à la liste des modules manquants.")
                     missing_modules.append("typescript")
@@ -830,12 +913,9 @@ class SpecGraphManager:
                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
                     reports.append(f"[TSC {d.name}] {status}\n{output}")
                     
-                    # Détection des modules manquants : "Cannot find module 'express'"
+                    # Détection des modules manquants
                     matches = re.findall(r"Cannot find module '([^']+)'", output)
                     if matches:
-                        # Filtrer : 
-                        # 1. Pas d'imports locaux (. ou /)
-                        # 2. Pas de noms commençant par une Majuscule (souvent des classes/modèles locaux)
                         npm_matches = [
                             m for m in matches 
                             if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
@@ -846,11 +926,37 @@ class SpecGraphManager:
                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
                 except Exception as e:
                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\n{str(e)}")
+            
+            elif build_tool == "vite":
+                # Pour Vite, utiliser vite preview ou build
+                try:
+                    res = subprocess.run(
+                        "npm run build",
+                        shell=True, capture_output=True, text=True,
+                        cwd=str(d), timeout=120
+                    )
+                    output = (res.stdout + "\n" + res.stderr).strip()
+                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    reports.append(f"[VITE {d.name}] {status}\n{output}")
+                    
+                    # Détection des modules manquants (même pattern)
+                    matches = re.findall(r"Cannot find module '([^']+)'", output)
+                    if matches:
+                        npm_matches = [
+                            m for m in matches 
+                            if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
+                        ]
+                        missing_modules.extend(npm_matches)
+                        
+                except subprocess.TimeoutExpired:
+                    reports.append(f"[VITE {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                except Exception as e:
+                    reports.append(f"[VITE {d.name}] ❌ ÉCHEC\n{str(e)}")
         
         logger.info("🛠️ Diagnostics terminés.")
         return {
             "terminal_diagnostics": "\n".join(reports),
-            "missing_modules": list(set(missing_modules)) # Écrase la liste précédente
+            "missing_modules": list(set(missing_modules))
         }
 
     def route_after_impl(self, state: AgentState) -> str:
