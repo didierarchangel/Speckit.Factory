@@ -133,6 +133,52 @@ Si le project est React (dossier `frontend/`) :
   {{ "compilerOptions": {{ "jsx": "react-jsx", "lib": ["ES2020", "DOM"] }} }}
   ```
 
+# ⚠️ ERREUR CRITIQUE TS2559: CHILDREN NOT TYPED (REACT)
+Si l'erreur est : `TS2559: Type '{ children: Element; }' has no properties in common with type 'IntrinsicAttributes'`
+
+**Cause** : Un composant React reçoit des `children` mais n'a pas de type `React.FC<Props>` avec `children` déclaré.
+
+**Solution immédiate** :
+
+```typescript
+// ❌ INCORRECT
+const Layout = ({{ children }}) => {
+  return <div>{{children}}</div>
+}
+
+// ✅ CORRECT
+import React, {{ ReactNode }} from 'react'
+
+interface LayoutProps {{
+  children?: ReactNode
+}}
+
+const Layout: React.FC<LayoutProps> = ({{ children }}) => {
+  return <div>{{children}}</div>
+}
+
+export default Layout
+```
+
+**Checklist** :
+1. Import `ReactNode` si pas déjà fait : `import {{ ReactNode }} from 'react'`
+2. Créer une `interface ComponentProps {{ children?: ReactNode }}`  
+3. Typer le composant : `const Component: React.FC<ComponentProps> = ({{ children }}) => ...`
+4. Utiliser `export default Component`
+
+**Variante avec PropsWithChildren** :
+```typescript
+import {{ PropsWithChildren }} from 'react'
+
+interface MyProps extends PropsWithChildren {{
+  title: string
+}}
+
+const Component: React.FC<MyProps> = ({{ children, title }}) => (
+  <div>{{title}}{{children}}</div>
+)
+```
+
 # CAS PARTICULIER NEXT.JS (ERREURS FRÉQUENTES EN FRONTEND)
 Si le project est Next.js (vérifier `next.config.ts` ou `next.config.js`) :
 1. **Structure des pages** : Next.js 13+ utilise `app/` directory (App Router) ou `pages/` directory (Pages Router)

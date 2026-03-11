@@ -39,21 +39,21 @@ tant que le build est cassé.
 Speckit supporte 3 frameworks frontend modernes. Respecte STRICTEMENT les conventions :
 
 ## React + Vite
-**Structure**: `frontend/src/{components,pages,services,hooks,utils}`
+**Structure**: `frontend/src/{{components,pages,services,hooks,utils}}`
 **Pages**: Créer dans `frontend/src/pages/`
 **Imports**: `import Button from '../components/Button'` (SANS .tsx)
 **Build**: `npm run build` (Vite)
 **Validation**: `npx tsc --noEmit`
 
 ## Vue + Vite
-**Structure**: `frontend/src/{components,views,services,composables,utils}`
+**Structure**: `frontend/src/{{components,views,services,composables,utils}}`
 **Pages**: Créer dans `frontend/src/views/` (PAS pages/)
 **Imports**: `import Home from '../views/Home'` (SANS .vue)
 **Build**: `npm run build` (Vite)
 **Validation**: `npx vue-tsc --noEmit`
 
 ## Next.js
-**Structure**: `frontend/{app,components,lib,utils}`
+**Structure**: `frontend/{{app,components,lib,utils}}`
 **Pages**: Créer dans `frontend/app/` (App Router) ou `frontend/pages/`
 **Imports**: `import Layout from './layout'` (SANS .tsx)
 **Build**: `npm run build` (Next.js)
