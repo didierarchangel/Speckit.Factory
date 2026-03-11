@@ -391,7 +391,7 @@ class SpecGraphManager:
         }
 
     def install_deps_node(self, state: AgentState) -> dict:
-        """Nœud : Installation des dépendances npm + vérification déterministe."""
+        """Nœud : Installation des dépendances npm + cache basé sur hash package.json."""
         import subprocess, json, re
         logger.info("📦 Installation des dépendances (npm install)...")
         
@@ -404,11 +404,24 @@ class SpecGraphManager:
                 continue
             
             found_pkg = True
+            
+            # ─── CACHE : Vérifier si package.json a changé ───
+            current_hash = self._compute_package_hash(pkg_path)
+            cached_hash = self._get_cached_hash(target_dir)
+            
+            if current_hash == cached_hash and (target_dir / "node_modules").exists():
+                logger.info(f"⚡ CACHE HIT pour {target_dir.name or 'racine'} (hash identique). Skip npm install.")
+                continue
+            
             logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
             try:
                 subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+                # Sauvegarder le hash après une installation réussie
+                self._save_package_hash(pkg_path, current_hash)
             except Exception as e:
                 logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
+                # Ne pas sauvegarder le hash si l'installation a échoué
+                continue
             
             # ─── GARANTIR QUE TYPESCRIPT EST INSTALLÉ (CRÍTICA) ───
             # Si on a détecté typescript manquant, on le force en dev
@@ -417,6 +430,9 @@ class SpecGraphManager:
                 try:
                     subprocess.run(["npm", "install", "--save-dev", "typescript"], 
                                   cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                    # Réenregistrer le hash après modification
+                    new_hash = self._compute_package_hash(pkg_path)
+                    self._save_package_hash(pkg_path, new_hash)
                 except Exception as e:
                     logger.error(f"⚠️ Installation forcée de typescript a échoué : {e}")
             
@@ -442,6 +458,10 @@ class SpecGraphManager:
                         if types_to_install:
                             subprocess.run(["npm", "install", "--save-dev"] + types_to_install, 
                                           cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                        
+                        # Réenregistrer le hash après modifications
+                        new_hash = self._compute_package_hash(pkg_path)
+                        self._save_package_hash(pkg_path, new_hash)
                     except Exception as e:
                         logger.error(f"⚠️ Échec de l'auto-résolution des modules TSC : {e}")
             
@@ -484,6 +504,9 @@ class SpecGraphManager:
                 try:
                     subprocess.run(["npm", "install", "--save"] + missing_prod, 
                                   cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                    # Réenregistrer le hash après modifications
+                    new_hash = self._compute_package_hash(pkg_path)
+                    self._save_package_hash(pkg_path, new_hash)
                 except Exception as e:
                     pass
             
@@ -492,6 +515,9 @@ class SpecGraphManager:
                 try:
                     subprocess.run(["npm", "install", "--save-dev"] + missing_dev, 
                                   cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                    # Réenregistrer le hash après modifications
+                    new_hash = self._compute_package_hash(pkg_path)
+                    self._save_package_hash(pkg_path, new_hash)
                 except Exception as e:
                     pass
                     
@@ -746,6 +772,37 @@ class SpecGraphManager:
         """Vérifie si typescript est installé dans le projet."""
         ts_path = project_dir / "node_modules" / "typescript"
         return ts_path.exists()
+
+    def _compute_package_hash(self, pkg_path: Path) -> str:
+        """Calcule le hash MD5 du contenu du package.json."""
+        import hashlib
+        if not pkg_path.exists():
+            return ""
+        try:
+            content = pkg_path.read_text(encoding="utf-8")
+            return hashlib.md5(content.encode()).hexdigest()
+        except Exception:
+            return ""
+
+    def _get_cached_hash(self, project_dir: Path) -> str:
+        """Récupère le hash stocké en cache (si existant)."""
+        hash_file = project_dir / ".speckit_hash"
+        if hash_file.exists():
+            try:
+                return hash_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                return ""
+        return ""
+
+    def _save_package_hash(self, pkg_path: Path, current_hash: str) -> None:
+        """Sauvegarde le hash du package.json dans .speckit_hash."""
+        hash_file = pkg_path.parent / ".speckit_hash"
+        try:
+            hash_file.write_text(current_hash, encoding="utf-8")
+            logger.info(f"💾 Hash package.json sauvegardé: {current_hash[:8]}...")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de sauvegarder le hash: {e}")
+
 
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""

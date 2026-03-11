@@ -124,6 +124,38 @@ L'agent d'exécution charge un contexte **strictement verrouillé** (Constitutio
 
 ---
 
+## ⚡ Optimisation : Cache Intelligent des Dépendances
+
+Speckit.Factory intègre un **système de cache basé sur hash** pour accélérer drastiquement les exécutions successives.
+
+### Comment ça marche :
+
+Chaque dossier (`backend/`, `frontend/`, racine) contient un fichier `.speckit_hash` qui stocke le hash MD5 de son `package.json`. 
+
+À chaque exécution :
+- ✅ Si le hash du `package.json` **n'a pas changé**, `npm install` est **skippé** (gain 5-10x plus rapide)
+- 🔄 Si le hash **a changé**, `npm install` s'exécute et le cache est mis à jour
+
+```bash
+# Première exécution (npm install normal)
+⏳ npm install (30-60s)
+
+# Deuxième exécution (même package.json)
+⚡ CACHE HIT pour backend (hash identique). Skip npm install
+✨ Quasiment instantané!
+```
+
+### Fichiers `.speckit_hash` :
+```text
+backend/.speckit_hash     # Tracking des changements de dépendances backend
+frontend/.speckit_hash    # Tracking des changements de dépendances frontend
+.speckit_hash             # Tracking des changements à la racine
+```
+
+**💡 Conseil :** Ne mettez **PAS** ces fichiers dans `.gitignore` ! Ils vous permettent de tracker **quand vos dépendances ont réellement été modifiées** et constituent un audit trail utile pour votre équipe.
+
+---
+
 ## 🛠️ Travailler sur un Projet Existant (Mode Composante)
 
 Si vous utilisez Speckit sur un projet qui contient déjà du code, suivez ce workflow pour ne pas écraser votre travail :
