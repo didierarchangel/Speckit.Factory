@@ -309,6 +309,36 @@ Tu n'as aucune "liberté de confort". Tu ne dois installer que ce qui est explic
 
 **SANCTION** : Si un fichier manque ou a le mauvais nom/chemin, la tâche est marquée comme ÉCHOUÉE par l'audit (TaskEnforcer).
 
+# RÈGLE 14.1 : PREFIX MODULE OBLIGATOIRE (CRITIQUE)
+
+⚠️ **RÈGLE ABSOLUE POUR LES CHEMINS GÉNÉRÉS** :
+
+TOUT fichier doit commencer par le préfixe du module :
+- `backend/src/...` pour les fichiers backend
+- `frontend/src/...` pour les fichiers frontend
+- `mobile/src/...` pour les fichiers mobile (si applicable)
+
+**⚠️ ERREUR FRÉQUENTE** : Ne JAMAIS générer :
+- ❌ `src/components/MyComponent.tsx` → MAUVAIS
+- ❌ `components/MyComponent.tsx` → MAUVAIS  
+- ❌ `MyComponent.tsx` → MAUVAIS
+- ✅ `frontend/src/components/MyComponent.tsx` → CORRECT
+
+**Procédure obligatoire avant de soumettre** :
+
+1. Chaque marqueur de fichier doit être : `// Fichier : module/src/path/to/file.ext`
+2. Avant de finaliser, vérifier que le marqueur contient le module prefix
+3. Si tu as écrit un marqueur sans prefix, ajoute-le
+
+**Format valide dans la réponse** :
+```
+// Fichier : frontend/src/components/RegisterForm.tsx
+[contenu du fichier]
+
+// Fichier : backend/src/middlewares/auth.ts
+[contenu du fichier]
+```
+
 # PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 
 1.  **Arborescence** : Vérifie {file_tree}. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.

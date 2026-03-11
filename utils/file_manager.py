@@ -26,6 +26,74 @@ class FileManager:
         except ValueError:
             return False
 
+    def normalize_path(self, file_path_str: str, target_module: str = None) -> str:
+        """Normalise les chemins de fichiers générés par l'IA pour garantir le préfixe du module.
+        
+        Stratégie de correction (en cascade):
+        1. Si le chemin est déjà complet (ex: backend/src/..., frontend/src/...) → retourner tel quel
+        2. Si le chemin commence par "src/" ou "components/" → ajouter le préfixe du module
+        3. Si c'est un fichier seul sans répertoire → chercher dans les répertoires standards
+        
+        Args:
+            file_path_str: Chemin du fichier (peut être relatif)
+            target_module: Module cible ('backend' ou 'frontend') - détecté automatiquement sinon
+            
+        Returns:
+            Chemin normalisé (ex: frontend/src/components/RegisterForm.tsx)
+        """
+        import re
+        
+        # Nettoyer le chemin
+        path = file_path_str.strip().replace('\\', '/')
+        
+        # Niveau 1 : Déjà un chemin complet avec module ?
+        if path.startswith('backend/') or path.startswith('frontend/') or path.startswith('mobile/'):
+            return path
+        
+        # Déterminer le module cible si non fourni
+        if not target_module:
+            # Heuristique : Chercher des indices dans le nom de fichier
+            if 'component' in path.lower() or 'page' in path.lower() or 'hook' in path.lower():
+                target_module = 'frontend'
+            elif 'middleware' in path.lower() or 'controller' in path.lower() or 'model' in path.lower() or 'route' in path.lower():
+                target_module = 'backend'
+            else:
+                target_module = 'frontend'  # Défaut
+        
+        # Niveau 2 : Commence par "src/" ou un dossier standard ?
+        if path.startswith('src/'):
+            return f"{target_module}/{path}"
+        
+        # Niveau 3 : Commence par un dossier standard (components/, services/, etc.) ?
+        standard_dirs = ['components', 'hooks', 'pages', 'services', 'routes', 'controllers', 'models', 'middlewares']
+        for dir_name in standard_dirs:
+            if path.startswith(f"{dir_name}/"):
+                return f"{target_module}/src/{path}"
+        
+        # Niveau 4 : C'est juste un nom de fichier ?
+        # Chercher le meilleur endroit pour le mettre
+        filename = path.split('/')[-1]
+        
+        if 'component' in filename.lower():
+            return f"{target_module}/src/components/{path}"
+        elif 'page' in filename.lower():
+            return f"{target_module}/src/pages/{path}"
+        elif 'hook' in filename.lower():
+            return f"{target_module}/src/hooks/{path}"
+        elif 'service' in filename.lower() or 'api' in filename.lower():
+            return f"{target_module}/src/services/{path}"
+        elif 'controller' in filename.lower():
+            return f"backend/src/controllers/{path}"
+        elif 'model' in filename.lower():
+            return f"backend/src/models/{path}"
+        elif 'middleware' in filename.lower():
+            return f"backend/src/middlewares/{path}"
+        elif 'route' in filename.lower():
+            return f"backend/src/routes/{path}"
+        else:
+            # Défaut : mettre dans src directement
+            return f"{target_module}/src/{path}"
+
     def safe_read(self, relative_path: str) -> Optional[str]:
         """Lit un fichier de manière sécurisée en vérifiant son existence et l'encodage utf-8."""
         file_path = self.base_path / relative_path
@@ -162,6 +230,12 @@ class FileManager:
             for i in range(1, len(file_blocks), 2):
                 file_path_str = file_blocks[i].strip()
                 ai_content = file_blocks[i+1].strip()
+                
+                # --- NORMALISATION DES CHEMINS (FIX MISSING MODULE PREFIX) ---
+                original_path = file_path_str
+                file_path_str = self.normalize_path(file_path_str)
+                if file_path_str != original_path:
+                    logger.info(f"🔧 Chemin normalisé : '{original_path}' → '{file_path_str}'")
                 
                 # --- FILTRE PHYSIQUE : GOLDEN TEMPLATE OVERRIDE ---
                 final_content = ai_content
