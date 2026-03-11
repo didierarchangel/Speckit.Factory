@@ -51,6 +51,15 @@ Si l'erreur TSC indique `Cannot find module '../middlewares/...'` :
 - Modifie les fichiers qui contiennent le mauvais import pour qu'ils correspondent à la réalité de l'arborescence.
 - Regarde la "4. SEMANTIC CODE MAP" pour vérifier ce que le fichier exporte réellement (pour corriger `has no exported member 'validate'`).
 
+# CAS PARTICULIER REACT/VITE (ERREURS FRÉQUENTES EN FRONTEND)
+Si le project est React (dossier `frontend/`) :
+1. **Import avec extension complète** : Corriger `import X from './pages/HomePage.tsx'` → `import X from './pages/HomePage'`
+   Les imports TypeScript/Vite ne doivent PAS inclure l'extension `.tsx` ou `.ts`
+2. **Route manquante** : Vérifier que chaque `<Route>` pointe vers un composant importé valide
+3. **Composant non exporté** : Vérifier que tous les composants utilisés dans App.tsx ou Layout.tsx ont `export default`
+4. **Page manquante dans pages/** : Si HomePage.tsx existe, s'assurer qu'il est importé SANS .tsx dans App.tsx
+5. **JSX/TSX pas reconnu** : Vérifier que tsconfig.json contient `"jsx": "react-jsx"` ou `"jsx": "react"`
+
 # RÉPARATION STRUCTURELLE (FEEDBACK TASK ENFORCER)
 Si {feedback_correction} contient "MANQUANT:", tu dois :
 1. Lire la liste des fichiers/scripts manquants

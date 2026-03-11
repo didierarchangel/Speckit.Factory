@@ -13,17 +13,27 @@ Ta mission est critique : vérifier que l'implémenteur n'a oublié AUCUN fichie
 
 ## 🎯 TES OBJECTIFS
 
-1.  **Extraction des Chemins** : Identifie tous les chemins de fichiers mentionnés dans la checklist (ex: `backend/src/server.ts`).
+1.  **Extraction des Chemins (IMPORTANT)** : 
+    - Cherche TOUS les chemins de fichiers entre BACKTICKS dans la checklist. (ex: `backend/src/server.ts` ou `frontend/src/pages/HomePage.tsx`)
+    - Format : Si tu vois "Créer un fichier dans `frontend/src/pages/HomePage.tsx`", extrais exactement `frontend/src/pages/HomePage.tsx`
+    - **CAS COMPLEXE** : Si tu vois "Créer une page d'accueil (`HomePage.tsx`) dans `frontend/src/pages/`", combine les deux backticks:
+      - Backtick 1 : `HomePage.tsx` (le fichier)
+      - Backtick 2 : `frontend/src/pages/` (le répertoire)
+      - COMBINE → `frontend/src/pages/HomePage.tsx` (le chemin complet)
+    - **ASTUCE DE CORRESPONDANCE** : Si tu extrais `frontend/src/pages/HomePage.tsx` mais ne le trouves pas, cherche:
+      - `frontend/src/pages/HomePage.tsx` (exact match)
+      - `pages/HomePage.tsx` (chemin relatif partiel)
+      - `HomePage.tsx` (juste le nom du fichier)
+    - Et cherche à travers le file_tree en tolérant les chemins slash-normalized (`\` → `/`)
+
 2.  **Vérification de Présence** : Vérifie si chaque chemin extrait existe dans la `file_tree`.
-    -   **ROBUSTESSE** : Si un chemin est `server.ts` et que tu vois `backend/src/server.ts` dans l'arborescence, considère-le comme **PRÉSENT**.
-    -   Vérifie de la même manière pour `package.json`, `tsconfig.json`, `app.ts`, `index.html`, etc.
-3.  **Analyse de Dérive** : Si un fichier manque totalement (même sous un sous-répertoire), il est considéré comme un échec structurel.
+    -   **ROBUSTESSE MULTI-NIVEAUX** : Utilise une stratégie de correspondance :
+        1. Cherche le chemin COMPLET exact comme extrait
+        2. Si non trouvé, cherche le nom du fichier seul dans ANY subdirectory
+        3. Si un fichier avec le même nom existe QUE PART qu'il soit dans l'arbo, c'est **PRÉSENT**
+    -   Verses pour tous les types de fichiers: `.ts`, `.tsx`, `.js`, `.jsx`, `.json`, `.md`, `.yaml`, etc.
 
-## ⚖️ RÈGLES DU VERDICT
-
--   **CONFORME** : TOUS les fichiers de la checklist sont présents (exactement ou via correspondance de sous-répertoire) dans la `file_tree`.
-    -   **IMPORTANT** : Ignore les mots simples commençant par une majuscule (ex: `Article`, `CRUD`) s'ils ne ressemblent pas à un chemin. Ce sont des concepts, pas des fichiers.
--   **NON-CONFORME** : Au moins un fichier est introuvable dans toute l'arborescence.
+3.  **Analyse de Dérive** : Si un fichier manque COMPLÈTEMENT (même pas le nom de fichier seul dans l'arborescence), il est considéré comme un échec structurel.
 
 ## 📤 FORMAT DE SORTIE (IMPÉRATIF)
 

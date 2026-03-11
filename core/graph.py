@@ -811,12 +811,34 @@ class SpecGraphManager:
             })
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
-            if result["verdict"] == "CONFORME":
+            # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
+            # Parfois l'IA retourne juste le nom du fichier ("HomePage.tsx")
+            # au lieu du chemin complet ("frontend/src/pages/HomePage.tsx").
+            # On fait une vérification robuste en Python avant de marquer comme manquant.
+            
+            file_tree_str = state.get("file_tree", "")
+            file_tree_list = file_tree_str.split('\n') if file_tree_str else []
+            
+            verified_missing = []
+            for missing_file in result.get("missing_files", []):
+                # Essayer 3 niveaux de correspondance
+                if self._file_exists_in_tree(missing_file, file_tree_list):
+                    logger.info(f"✅ Fichier trouvé après post-processing: {missing_file}")
+                    # Le fichier existe vraiment, ne pas le marquer comme manquant
+                else:
+                    logger.warning(f"❌ Fichier manquant confirmé: {missing_file}")
+                    verified_missing.append(missing_file)
+            
+            # Mettre à jour le résultat avec les vraiment manquants
+            result["missing_files"] = verified_missing
+            result["missing_tasks"] = len(verified_missing)
+            
+            if len(verified_missing) == 0:
                 return {"validation_status": "STRUCTURE_OK"}
             else:
                 return {
                     "validation_status": "STRUCTURE_KO",
-                    "feedback_correction": f"MANQUANT: {', '.join(result['missing_files'])}",
+                    "feedback_correction": f"MANQUANT: {', '.join(verified_missing)}",
                     "error_count": state.get("error_count", 0) + 1
                 }
         except Exception as e:
@@ -1092,6 +1114,41 @@ class SpecGraphManager:
         else:
             # Default fallback
             return "// Auto-generated stub file\n"
+
+    def _file_exists_in_tree(self, file_to_find: str, file_tree_list: List[str]) -> bool:
+        r"""Cherche un fichier dans l'arborescence avec stratégie multi-niveaux.
+        
+        Essaie de matcher:
+        1. Le chemin exact
+        2. Le chemin normalisé (\ → /)
+        3. Juste le nom du fichier n'importe où dans l'arbo
+        
+        Args:
+            file_to_find: Chemin ou nom du fichier à chercher (ex: "HomePage.tsx" ou "frontend/src/pages/HomePage.tsx")
+            file_tree_list: Liste des fichiers dans l'arborescence
+        
+        Returns: True si le fichier est trouvé, False sinon
+        """
+        file_to_find_normalized = file_to_find.replace('\\', '/')
+        file_name_only = file_to_find.split('/')[-1] if '/' in file_to_find else file_to_find
+        
+        for tree_file in file_tree_list:
+            tree_file_normalized = tree_file.strip().replace('\\', '/')
+            
+            # Niveau 1 : correspondance exacte
+            if tree_file_normalized == file_to_find_normalized:
+                return True
+            
+            # Niveau 2 : endswith (pour chemins partiels)
+            if tree_file_normalized.endswith(file_to_find_normalized):
+                return True
+            
+            # Niveau 3 : corresponds au nom du fichier seul
+            tree_file_name = tree_file_normalized.split('/')[-1]
+            if tree_file_name == file_name_only:
+                return True
+        
+        return False
 
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible).
