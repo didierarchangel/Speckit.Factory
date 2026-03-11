@@ -882,7 +882,14 @@ class SpecGraphManager:
                 except Exception as e:
                     logger.warning(f"⚠️ Error in {target_dir}: {e}")
             # 🛡️ Always clear missing_modules and add anti-loop protection
-            state["missing_modules"] = []
+                IGNORE_MODULES = [
+                    "@testing-library/react-hooks",
+                    "@testing-library/react",
+                    "jest",
+                    "vitest"
+                ]
+                # Filtrer les modules ignorés
+                state["missing_modules"] = [m for m in state.get("missing_modules", []) if m not in IGNORE_MODULES]
             state["dep_attempts"] = state.get("dep_attempts", 0) + 1
             if state["dep_attempts"] > 3:
                 logger.warning("Dependency install loop detected — skipping")
@@ -892,6 +899,31 @@ class SpecGraphManager:
                 "dependency_fixes": fixed_issues,
                 "state": state
             }
+                # 🛡️ Filter missing_modules: only keep those not installed
+                import subprocess
+                import json
+                missing = state.get("missing_modules", [])
+                filtered_missing = []
+                for module in missing:
+                    try:
+                        result = subprocess.run([
+                            "npm", "list", module, "--json"
+                        ], capture_output=True, text=True)
+                        data = json.loads(result.stdout)
+                        if module not in data.get("dependencies", {}):
+                            filtered_missing.append(module)
+                    except Exception:
+                        filtered_missing.append(module)
+                state["missing_modules"] = filtered_missing
+                state["dep_attempts"] = state.get("dep_attempts", 0) + 1
+                if state["dep_attempts"] > 2:
+                    logger.warning("Dependency loop detected")
+                    state["missing_modules"] = []
+                return {
+                    "dependency_issues_fixed": len(fixed_issues),
+                    "dependency_fixes": fixed_issues,
+                    "state": state
+                }
         except Exception as e:
             logger.error(f"❌ validate_dependency_node error: {e}")
             state["missing_modules"] = []
@@ -932,24 +964,47 @@ class SpecGraphManager:
             
             found_pkg = True
             missing_modules = state.get("missing_modules", [])
-            
-            if missing_modules:
-                logger.warning(f"🚀 Modules manquants détectés: {missing_modules}. BYPASS CACHE -> npm install...")
-                try:
-                    subprocess.run(
-                        ["npm", "install"] + missing_modules,
+                # Filtrer les modules déjà installés dans le bon target_dir
+                def module_installed(module, target_dir):
+                    result = subprocess.run(
+                        ["npm", "list", module, "--depth=0"],
                         cwd=str(target_dir),
-                        shell=True,
                         capture_output=True,
-                        timeout=180
+                        text=True
                     )
+                    return result.returncode == 0
+
+                filtered_missing = [m for m in missing_modules if not module_installed(m, target_dir)]
+                if not filtered_missing:
+                    logger.info("✅ Aucun module réellement manquant")
+                    state["missing_modules"] = []
+                    state["dependency_checked"] = True
+                    continue
+
+                logger.warning(f"🚀 Modules manquants détectés: {filtered_missing}. BYPASS CACHE -> npm install...")
+                try:
+                    # Déterminer si devDependency
+                    dev_deps = set()
+                    try:
+                        pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                        dev_deps = set(pkg_data.get("devDependencies", {}).keys())
+                    except Exception:
+                        pass
+                    dev_to_install = [m for m in filtered_missing if m in dev_deps]
+                    prod_to_install = [m for m in filtered_missing if m not in dev_deps]
+                    if prod_to_install:
+                        subprocess.run(["npm", "install", "--save"] + prod_to_install,
+                            cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+                    if dev_to_install:
+                        subprocess.run(["npm", "install", "--save-dev"] + dev_to_install,
+                            cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
                     new_hash = self._compute_package_hash(pkg_path)
                     self._save_package_hash(pkg_path, new_hash)
-                    logger.info(f"✅ Modules {missing_modules} installés avec succès.")
-                    # 🛡️ BREAK_LOOP: Clear missing modules to avoid infinite loop
+                    logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
                     state["missing_modules"] = []
+                    state["dependency_checked"] = True
                 except Exception as e:
-                    logger.error(f"⚠️ Échec installation modules {missing_modules}: {e}")
+                    logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
                     continue
             else:
                 # ─── CACHE NORMAL : Vérifier si package.json a changé ───
