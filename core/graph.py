@@ -964,23 +964,19 @@ class SpecGraphManager:
             
             found_pkg = True
             missing_modules = state.get("missing_modules", [])
-                # Filtrer les modules déjà installés dans le bon target_dir
-                def module_installed(module, target_dir):
-                    result = subprocess.run(
-                        ["npm", "list", module, "--depth=0"],
-                        cwd=str(target_dir),
-                        capture_output=True,
-                        text=True
-                    )
-                    return result.returncode == 0
+            
+            # Filtrer les modules déjà installés dans le bon target_dir
+            def module_installed(module, target_dir):
+                result = subprocess.run(
+                    ["npm", "list", module, "--depth=0"],
+                    cwd=str(target_dir),
+                    capture_output=True,
+                    text=True
+                )
+                return result.returncode == 0
 
-                filtered_missing = [m for m in missing_modules if not module_installed(m, target_dir)]
-                if not filtered_missing:
-                    logger.info("✅ Aucun module réellement manquant")
-                    state["missing_modules"] = []
-                    state["dependency_checked"] = True
-                    continue
-
+            filtered_missing = [m for m in missing_modules if not module_installed(m, target_dir)]
+            if filtered_missing:
                 logger.warning(f"🚀 Modules manquants détectés: {filtered_missing}. BYPASS CACHE -> npm install...")
                 try:
                     # Déterminer si devDependency
@@ -1007,6 +1003,10 @@ class SpecGraphManager:
                     logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
                     continue
             else:
+                logger.info("✅ Aucun module réellement manquant")
+                state["missing_modules"] = []
+                state["dependency_checked"] = True
+                
                 # ─── CACHE NORMAL : Vérifier si package.json a changé ───
                 current_hash = self._compute_package_hash(pkg_path)
                 cached_hash = self._get_cached_hash(target_dir)
