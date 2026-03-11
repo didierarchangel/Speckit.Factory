@@ -17,10 +17,11 @@ from core.GraphicDesign import GraphicDesign
 
 import shutil
 
+# ─── Logger configuration (avant tout usage) ───
+logger = logging.getLogger(__name__)
+
 npm_path = shutil.which("npm") or shutil.which("npm.cmd")
 logger.info(f"🔧 npm_path détecté : {npm_path}")
-
-logger = logging.getLogger(__name__)
 
 # ─── 0. Configuration des Limites ──────────────────────────────────────────────────
 MAX_RETRIES = 3
