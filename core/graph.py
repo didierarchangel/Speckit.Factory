@@ -1016,7 +1016,7 @@ class SpecGraphManager:
         
         Cherche les chemins entre backticks: `backend/src/middlewares/auth.ts`
         Cas spécial: Si un ligne a `fileName` ET `folder/`, les combine en `folder/fileName`
-        Returns: Liste des chemins de fichiers trouvés
+        Returns: Liste des chemins de fichiers trouvés (sans doublons)
         """
         import re
         if not checklist_text:
@@ -1048,7 +1048,10 @@ class SpecGraphManager:
                 combined_path = f"{directory}{filename}".replace('//', '/')
                 
                 # Vérifier que ce chemin n'a pas déjà été extrait en pattern 1
-                if combined_path not in required_files:
+                # ET que ce n'est pas un doublon d'un full_path déjà trouvé
+                is_duplicate_of_fullpath = any(fp.endswith(filename) for fp in full_paths)
+                
+                if combined_path not in required_files and not is_duplicate_of_fullpath:
                     required_files.append(combined_path)
         
         logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
