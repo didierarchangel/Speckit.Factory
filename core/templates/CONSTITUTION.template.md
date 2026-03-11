@@ -32,9 +32,18 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 ### 1.2 Frontend (Si applicable)
 * **Langage** : [Ex: TypeScript]
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/frontend`.
-* **Framework** : [Ex: React 18 (^18.2.0) avec Vite (^5.1.4)]
-* **Routage** : [Ex: react-router-dom (^6.22.3)]
+* **Framework** : [Ex: 
+    - **Option A: React 18 avec Vite** : React (^18.2.0) + Vite (^5.1.4) + react-router-dom (^6.22.3)
+    - **Option B: Next.js** : Next.js (^14.0.0) avec `app/` directory (App Router) OU `pages/` directory (Pages Router)
+    - Autre : [Framework spécifié]
+* **Routage** : 
+    - **Si React + Vite** : react-router-dom (^6.22.3)
+    - **Si Next.js** : Routage FILE-BASED intégré (pas d'import supplémentaire requis)
 * **Styling** : [Ex: Tailwind CSS, Vanilla CSS]
+* **NOTE CRITIQUE** : 
+    - Si React + Vite est choisi, un `vite.config.ts` DOIT être présent
+    - Si Next.js est choisi, un `next.config.ts` ou `next.config.js` DOIT être présent
+    - Les deux frameworks ne peuvent PAS coexister dans le même projet
 
 ### 1.3 Outillage & Tests (VERSIONS FIXES OBLIGATOIRES)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]

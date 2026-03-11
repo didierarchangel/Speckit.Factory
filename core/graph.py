@@ -140,18 +140,42 @@ class SpecGraphManager:
         """Détecte le bon outil de build selon le module.
         
         - backend → TypeScript (tsc)
-        - frontend → Vite ou TypeScript
+        - frontend → Next.js, Vite, ou TypeScript
         - mobile → TypeScript ou autre
         """
         if target_module == "frontend":
-            # Vérifier si vite.config.ts existe
+            # Vérifier si next.config.ts/js existe (Next.js)
+            if ((self.root / "frontend" / "next.config.ts").exists() or 
+                (self.root / "frontend" / "next.config.js").exists() or
+                (self.root / "frontend" / "next.config.mjs").exists()):
+                return "next"
+            
+            # Vérifier si vite.config.ts existe (Vite)
             if (self.root / "frontend" / "vite.config.ts").exists():
                 return "vite"
+            
             # Fallback à TypeScript
             return "tsc"
         
         # Par défaut, utiliser TypeScript
         return "tsc"
+
+    def _get_nextjs_router_type(self) -> str:
+        """Détecte le type de router Next.js: 'app' (App Router) ou 'pages' (Pages Router).
+        
+        Returns: 'app', 'pages', ou 'unknown'
+        """
+        frontend_dir = self.root / "frontend"
+        
+        # Next.js 13+ App Router utilise app/ directory
+        if (frontend_dir / "app").exists():
+            return "app"
+        
+        # Pages Router utilise pages/ directory
+        if (frontend_dir / "pages").exists():
+            return "pages"
+        
+        return "unknown"
 
     def _detect_cross_module_deps(self, target_module: str, pkg_path: Path) -> dict:
         """Détecte les dépendances cross-module (ex: frontend dépend du backend).
@@ -1281,6 +1305,39 @@ class SpecGraphManager:
                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\nTimeout après 120s")
                 except Exception as e:
                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\n{str(e)}")
+            
+            elif build_tool == "next":
+                # Pour Next.js, utiliser npm run build ou next build
+                try:
+                    res = subprocess.run(
+                        "npm run build",
+                        shell=True, capture_output=True, text=True,
+                        cwd=str(d), timeout=120
+                    )
+                    output = (res.stdout + "\n" + res.stderr).strip()
+                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    reports.append(f"[NEXT {d.name}] {status}\n{output}")
+                    
+                    # ⚠️ Tracker si c'est le module cible
+                    if res.returncode != 0:
+                        module_errors[d.name or "root"] = "next"
+                    
+                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    if target_module and d.name != target_module:
+                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                    else:
+                        matches = re.findall(r"Cannot find module '([^']+)'", output)
+                        if matches:
+                            npm_matches = [
+                                m for m in matches 
+                                if not m.startswith('.') and not m.startswith('/') and not (m and m[0].isupper())
+                            ]
+                            missing_modules.extend(npm_matches)
+                        
+                except subprocess.TimeoutExpired:
+                    reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                except Exception as e:
+                    reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\n{str(e)}")
         
         logger.info("🛠️ Diagnostics terminés.")
         
