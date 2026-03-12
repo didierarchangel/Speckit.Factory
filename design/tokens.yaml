@@ -14,14 +14,18 @@ colors:
     600: "#4b5563"
     800: "#1f2937"
     900: "#111827"
+  emerald:
+    900: "#064e3b" # SVAD Dark Green
+  amber:
+    400: "#fbbf24" # SVAD Gold/Yellow
   violet:
     600: "#7c3aed"
     900: "#4c1d95"
   cyan:
     500: "#06b6d4"
 gradients:
-  vibrant: "bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500"
-  premium: "bg-gradient-to-br from-gray-900 via-slate-900 to-blue-900"
+  vibrant: "bg-gradient-to-r from-emerald-900 to-emerald-800" # New SVAD Style
+  premium: "bg-[#064e3b]"
   glossy: "bg-white/10 backdrop-blur-md border border-white/20"
 animations:
   float: "animate-float"

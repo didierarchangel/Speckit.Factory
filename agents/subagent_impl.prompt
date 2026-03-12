@@ -223,6 +223,13 @@ Si le projet est en mode **Premium**, tu DOIS impérativement :
 - Privilégier le **Glassmorphism** (`backdrop-blur-xl`, `bg-white/80`, `border-white/20`).
 - Ajouter des micro-animations (pulse, ping) sur les indicateurs de statut.
 
+Règle 4.1.1 : PALETTE ELITE (SVAD)
+Si le projet est en mode **Premium**, la palette par défaut DOIT être :
+- Fond : Blanc (`bg-white`) avec des accents Vert Sombre (`#064e3b`).
+- En-têtes / Boutons : Vert Sombre (`#064e3b`).
+- Accentuation / Texte En-tête : Or / Jaune Ambre (`#fbbf24`).
+- Typographie : `font-black` pour les titres, densifié au maximum.
+
 Règle 4.2 : DIMENSIONS DES FORMULAIRES (PORTRAIT)
 Tout formulaire de saisie (Login, Register, Création/Edition) DOIT :
 - Être compact et privilégier une forme "en portrait".
@@ -251,6 +258,45 @@ Si un composant utilise un hook d'une bibliothèque (ex: `useNavigate`, `useLoca
 - ✅ Correct: `<Router><AuthProvider><App /></AuthProvider></Router>`
 - ❌ Incorrect: `<AuthProvider><Router><App /></Router></AuthProvider>` (Si `AuthProvider` utilise `useNavigate`)
 Vérifie toujours cette hiérarchie dans `App.tsx` ou `main.tsx`.
+
+Règle 4.5 : AUTHCONTEXT — INITIALISATION OBLIGATOIRE DEPUIS LOCALSTORAGE (CRITIQUE)
+Tout `AuthProvider` qui gère l'authentification DOIT :
+1. **Sauvegarder le token ET les données utilisateur** dans `localStorage` lors du `login()` :
+   ```typescript
+   localStorage.setItem('authToken', token);
+   localStorage.setItem('user', JSON.stringify(user));
+   ```
+2. **Restaurer la session au montage** avec un `useEffect([], [])` qui :
+   - Lit `authToken` et `user` depuis `localStorage`
+   - Si présents, parse le JSON et appelle `setUser(...)` pour restaurer l'état
+   - Appelle **TOUJOURS** `setLoading(false)` à la fin (dans un `finally` ou après le `if/else`)
+3. **Nettoyer** lors du `logout()` :
+   ```typescript
+   localStorage.removeItem('authToken');
+   localStorage.removeItem('user');
+   setUser(null);
+   ```
+
+⚠️ **SANS CE `useEffect`**, le state `loading` reste `true` indéfiniment après un rechargement de page,
+ce qui bloque `ProtectedRoute` sur "Chargement..." et rend **TOUTES les pages intérieures BLANCHES**.
+
+Exemple minimal OBLIGATOIRE dans le `AuthProvider` :
+```typescript
+React.useEffect(() => {
+  const token = localStorage.getItem('authToken');
+  const storedUser = localStorage.getItem('user');
+  if (token && storedUser) {
+    try {
+      const parsed = JSON.parse(storedUser);
+      setUser({ id: parsed._id || parsed.id, email: parsed.email });
+    } catch (e) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+    }
+  }
+  setLoading(false); // ← CRITIQUE : toujours libérer le loading
+}, []);
+```
 
 Règle 5 : TESTS ET PLACEHOLDERS
 
@@ -366,6 +412,22 @@ Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
     *   Interdit : `"express": "^4.19.2"`
 2.  **Scripts et DevDeps** : Tout outil utilisé dans `scripts` (ex: `tsc`, `jest`, `eslint`) DOIT être présent dans `devDependencies` avec une version fixe.
 3.  **Imports et Sync** : Si tu importes une lib (ex: `cors`, `morgan`), elle DOIT être dans `package.json`. NE JAMAIS importer une lib "par défaut" si elle n'est pas dans la liste des dépendances.
+
+RÈGLE 12.2 : MIDDLEWARE DE DÉBOGAGE (OBLIGATOIRE)
+Tout projet Backend Express DOIT inclure dans `app.ts` :
+1. **`express.json()`** ET **`express.urlencoded({ extended: true })`** AVANT les routes.
+2. **Middleware de débogage** entre les parsers et les routes, qui affiche :
+   - La méthode et l'URL de la requête
+   - Le `Content-Type` du header
+   - Les clés du `req.body` (avec avertissement si vide)
+   - Le contenu du body pour les requêtes POST/PUT/PATCH
+3. **Logging enrichi dans `validate.middleware.ts`** :
+   - Vérifier si `Content-Type` contient `application/json`
+   - Afficher un avertissement si `req.body` est vide avec les causes possibles
+   - Afficher la structure complète envoyée à Zod
+   - Afficher les erreurs Zod champ par champ avec le chemin complet
+
+Ceci est CRITIQUE pour que les utilisateurs non-seniors puissent diagnostiquer les problèmes de validation.
 4.  **IMMUTABILITÉ GOLDEN TEMPLATE** : Le fichier `tsconfig.json` est géré par le système. **INTERDICTION FORMELLE** d'écraser ce fichier avec ta propre version si le build réussit. Si tu dois le modifier pour corriger un bug build RÉEL (diagnostiqué par le terminal), assure-être que l'`include` est toujours `["src/**/*"]`.
 
 Règle 13 : STACK TECHNIQUE (STRICT)
@@ -380,6 +442,19 @@ Tous les projets (Backend et Frontend) **DOIVENT** être en **ES Modules (ESM)**
 - **Vite/Tailwind** : Utiliser `export default` dans `vite.config.ts`, `tailwind.config.js` et `postcss.config.js`.
 
 Si tu trouves un projet en CommonJS (pas de `"type": "module"`), tu DOIS le convertir en ESM pour respecter la nouvelle norme de la Constitution.
+
+Règle 15.1 : PROJETS VITE (CRITIQUE)
+Pour tout projet frontend utilisant **Vite** :
+1. **Types Vite** : Tu DOIS créer le fichier `frontend/src/vite-env.d.ts` contenant `/// <reference types="vite/client" />`.
+2. **tsconfig.json** : Tu DOIS ajouter `"types": ["vite/client"]` dans `compilerOptions`. Sans cela, `import.meta.env` provoque l'erreur `Property 'env' does not exist on type 'ImportMeta'`.
+3. **API Base URL** : Utiliser une URL **RELATIVE** (`baseURL: '/api'`) dans l'instance Axios pour profiter du proxy Vite. **INTERDICTION** d'utiliser une URL absolue comme `http://localhost:XXXX/api` car cela contourne le proxy et provoque des erreurs CORS.
+4. **Ports** : Le port du serveur de dev Vite (`vite.config.ts`) et le port du backend (`env.ts`) **DOIVENT** être différents. Ex: Vite sur 3001, Backend sur 5001.
+
+Règle 15.2 : IMPORTS CROSS-PROJETS (INTERDIT)
+**INTERDICTION ABSOLUE** d'importer directement des fichiers du `backend/` dans le `frontend/` ou vice versa.
+- ❌ `import { IUser } from '../../../backend/src/models/User.model'`
+- ✅ Créer une interface locale dans le frontend qui miroir le type backend.
+Les bundlers (Vite, Webpack) ne peuvent pas résoudre ces imports transversaux.
 
 📌 **RÈGLE ABSOLUE** : Si un fichier est énuméré dans la CHECKLIST OBLIGATOIRE, tu DOIS :
 1. Créer le fichier avec le **CHEMIN EXACT** comme énoncé
