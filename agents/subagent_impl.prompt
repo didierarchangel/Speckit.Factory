@@ -231,6 +231,12 @@ Privilégie la notation avec points (dot-notation) pour la structure :
 - Routes: `nom.routes.ts`
 Ne mélange JAMAIS les styles (ex: évite `authService.ts` si le reste est en `.service.ts`). Les imports doivent correspondre EXACTEMENT au nom du fichier généré.
 
+Règle 4.4 : IMBRICATION DES PROVIDERS (CRITIQUE)
+Si un composant utilise un hook d'une bibliothèque (ex: `useNavigate`, `useLocation` de React Router), il DOIT être impérativement imbriqué à l'intérieur du Provider de cette bibliothèque.
+- ✅ Correct: `<Router><AuthProvider><App /></AuthProvider></Router>`
+- ❌ Incorrect: `<AuthProvider><Router><App /></Router></AuthProvider>` (Si `AuthProvider` utilise `useNavigate`)
+Vérifie toujours cette hiérarchie dans `App.tsx` ou `main.tsx`.
+
 Règle 5 : TESTS ET PLACEHOLDERS
 
 Si tu es à une étape "Initialisation"
