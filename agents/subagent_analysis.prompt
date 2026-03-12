@@ -35,7 +35,7 @@ Prends en compte les éléments suivants pour ton analyse :
 - Règle 2 : Tu ne peux PAS ajouter de dépendances technologiques qui ne sont pas explicitement listées dans la Constitution.
 - Règle 3 : Tu ne peux PAS proposer une architecture différente de celle validée. Si une technologie est imposée (ex: React, FastAPI), tu dois t'y tenir.
 - Règle 4 : Précision de Configuration. Si la tâche implique des fichiers de configuration (TSConfig, ESLint, Vite), utilise des patterns standards. (ex: "include": ["src/**/*"]). 
-- Règle 5 : Structure des Validateurs. Pour tout projet Node.js/Express, les validateurs Zod DOIVENT respecter la structure `{ body: z.object({...}) }` pour être compatibles avec le middleware de validation standard. Ne jamais planifier de validateurs "plats" si un middleware de validation est utilisé.
+- Règle 5 : Structure des Validateurs. Pour tout projet Node.js/Express, les validateurs Zod DOIVENT respecter la structure `{{ body: z.object({{...}}) }}` pour être compatibles avec le middleware de validation standard. Ne jamais planifier de validateurs "plats" si un middleware de validation est utilisé.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois impérativement respecter le schéma JSON fourni.

@@ -262,7 +262,7 @@ Vérifie toujours cette hiérarchie dans `App.tsx` ou `main.tsx`.
 Règle 4.5 : AUTHCONTEXT — INITIALISATION OBLIGATOIRE DEPUIS LOCALSTORAGE (CRITIQUE)
 Tout `AuthProvider` qui gère l'authentification DOIT :
 1. **Sauvegarder le token ET les données utilisateur** dans `localStorage` lors du `login()` :
-   ```typescript
+   ```
    localStorage.setItem('authToken', token);
    localStorage.setItem('user', JSON.stringify(user));
    ```
@@ -271,7 +271,7 @@ Tout `AuthProvider` qui gère l'authentification DOIT :
    - Si présents, parse le JSON et appelle `setUser(...)` pour restaurer l'état
    - Appelle **TOUJOURS** `setLoading(false)` à la fin (dans un `finally` ou après le `if/else`)
 3. **Nettoyer** lors du `logout()` :
-   ```typescript
+   ```
    localStorage.removeItem('authToken');
    localStorage.removeItem('user');
    setUser(null);
@@ -281,21 +281,21 @@ Tout `AuthProvider` qui gère l'authentification DOIT :
 ce qui bloque `ProtectedRoute` sur "Chargement..." et rend **TOUTES les pages intérieures BLANCHES**.
 
 Exemple minimal OBLIGATOIRE dans le `AuthProvider` :
-```typescript
-React.useEffect(() => {
+```
+React.useEffect(() => {{
   const token = localStorage.getItem('authToken');
   const storedUser = localStorage.getItem('user');
-  if (token && storedUser) {
-    try {
+  if (token && storedUser) {{
+    try {{
       const parsed = JSON.parse(storedUser);
-      setUser({ id: parsed._id || parsed.id, email: parsed.email });
-    } catch (e) {
+      setUser({{ id: parsed._id || parsed.id, email: parsed.email }});
+    }} catch (e) {{
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
-    }
-  }
+    }}
+  }}
   setLoading(false); // ← CRITIQUE : toujours libérer le loading
-}, []);
+}}, []);
 ```
 
 Règle 5 : TESTS ET PLACEHOLDERS
@@ -373,15 +373,15 @@ Si la tâche implique `tsconfig.json`, tu dois respecter ces règles :
 
 Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 1.  **Structure de Validation (CRITIQUE)** : 
-    *   Le middleware `validate()` attend un objet structurel `{ body, query, params }`.
+    *   Le middleware `validate()` attend un objet structurel `{{ body, query, params }}`.
     *   Tout schéma Zod d'input **DOIT** envelopper ses champs dans une clé `body`, `query` ou `params`.
     *   ✅ **Correct** : 
-        ```typescript
-        const RegisterBody = z.object({ email: z.string(), ... });
-        export const RegisterInput = z.object({ body: RegisterBody });
+        ```
+        const RegisterBody = z.object({{ email: z.string(), ... }});
+        export const RegisterInput = z.object({{ body: RegisterBody }});
         export type RegisterInputType = z.infer<typeof RegisterBody>;
         ```
-    *   ❌ **Incorrect** : `export const RegisterInput = z.object({ email: z.string() });`
+    *   ❌ **Incorrect** : `export const RegisterInput = z.object({{ email: z.string() }});`
 2.  **Casse binaire** : 
     *   L'objet Zod (schéma) DOIT être en `camelCase` (ex: `createArticleInput`).
     *   Le type TypeScript extrait DOIT être en `PascalCase` (ex: `CreateArticleInputType`).
