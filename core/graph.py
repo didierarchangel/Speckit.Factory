@@ -660,41 +660,50 @@ class SpecGraphManager:
             code_map_to_use = filtered.get("code_map_filtered", state.get("code_map", ""))
             file_tree_to_use = filtered.get("file_tree_filtered", state.get("file_tree", ""))
             
-            # 🛡️ TRUNCATION DE CONSTITUTION si > 8KB (contexte LLM trop large)
-            constitution_content = state["constitution_content"]
-            if len(constitution_content) > 8000:
-                # Prendre les premiers 7KB seulement pour laisser place au reste
-                constitution_content = constitution_content[:7000] + "\n[... TRUNCATED FOR CONTEXT LIMIT ...]"
-                logger.warning(f"⚠️ Constitution content truncated from {len(state['constitution_content'])} to 7000 chars")
+            # 🛡️ CONSTITUTION: JAMAIS TRONQUER - C'est la source de vérité !
+            constitution_content = state["constitution_content"]  # ← ALWAYS COMPLETE AND FULL
             
-            # 🛡️ TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode)
+            # 🛡️ TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode SEULEMENT)
             if len(existing_snapshot) > 10000:
                 existing_snapshot = existing_snapshot[:9800] + "\n// [... CODE TRUNCATED FOR CONTEXT LIMIT ...]"
                 logger.warning(f"⚠️ Existing snapshot truncated from {len(state.get('existing_code_snapshot', ''))} to 9800 chars")
             
-            # 🛡️ TRUNCATION DE analysis_output si > 5KB
+            # 🛡️ TRUNCATION DE analysis_output si > 5KB (can summarize, not critical)
             analysis_output = state.get("analysis_output", "")
             if len(analysis_output) > 5000:
                 analysis_output = analysis_output[:4800] + "\n[... ANALYSIS TRUNCATED FOR CONTEXT LIMIT ...]"
                 logger.warning(f"⚠️ Analysis output truncated to 4800 chars")
             
+            # 🛡️ TRUNCATION DE terminal_diagnostics si > 3KB (can summarize)
+            terminal_diagnostics = state.get("terminal_diagnostics", "")
+            if len(terminal_diagnostics) > 3000:
+                terminal_diagnostics = terminal_diagnostics[:2800] + "\n[... DIAGNOSTICS TRUNCATED ...]"
+                logger.info(f"ℹ️ Terminal diagnostics truncated to 2800 chars")
+            
+            # 🛡️ TRUNCATION DE design_spec (JSON, can be summarized)
+            design_spec = state.get("design_spec", "Non générée")
+            if isinstance(design_spec, str) and len(design_spec) > 2000:
+                design_spec = design_spec[:1800] + "\n[... DESIGN SPEC TRUNCATED ...]"
+                logger.info(f"ℹ️ Design spec truncated to 1800 chars")
+
+            # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
             # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
-                "constitution_content": constitution_content,
+                "constitution_content": constitution_content,  # ← ALWAYS COMPLETE (never truncated)
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
                 "pending_tasks": state["pending_tasks"],
                 "target_task": state["target_task"],
-                "analysis_output": analysis_output,
+                "analysis_output": analysis_output,  # ← May be truncated (non-critical)
                 "feedback_correction": state.get("feedback_correction", ""),
-                "terminal_diagnostics": state.get("terminal_diagnostics", ""),
-                "code_map": code_map_to_use,
-                "file_tree": file_tree_to_use,
-                "design_spec": state.get("design_spec", "Non générée"),
+                "terminal_diagnostics": terminal_diagnostics,  # ← May be truncated (diagnostic only)
+                "code_map": code_map_to_use,  # ← Filtered by _get_filtered_context()
+                "file_tree": file_tree_to_use,  # ← Filtered by _get_filtered_context()
+                "design_spec": design_spec,  # ← May be truncated (non-critical)
                 "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
-                "existing_code_snapshot": existing_snapshot,
+                "existing_code_snapshot": existing_snapshot,  # ← May be truncated (PATCH mode only)
                 "format_instructions": parser.get_format_instructions()
             }
             
