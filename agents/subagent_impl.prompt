@@ -312,6 +312,7 @@ Tu dois classer les paquets NPM avec rigueur :
 **RÈGLE ABSOLUE** : Si tu crées ou modifies `backend/package.json`, TypeScript DOIT être présent dans `devDependencies`.
 - Utilise toujours : `"typescript": "5.4.5"` (version fixe)
 - Si le script `build` est défini, il DOIT être : `"build": "tsc"`
+- Le script `start` DOIT être : `"start": "ts-node src/server.ts"` (pour éviter les erreurs d'exécution avant le build final)
 - Interdiction formelle d'oublier TypeScript: ce manque causera l'erreur "This is not the tsc command you are looking for"
 
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)

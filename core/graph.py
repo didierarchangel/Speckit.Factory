@@ -1369,19 +1369,31 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         
         try:
             # 🛡️ IMPROVED: Capturer l'état de génération AVANT l'audit
-            generation_failed = state.get("validation_status") == "REJETÉ" or state.get("last_error", "")
-            structure_valid = state.get("validation_status") in ["STRUCTURE_OK", "DEPS_INSTALLED", "GENERATED"]
+            terminal_diag = state.get("terminal_diagnostics", "")
+            target_module = state.get("target_module")
+            
+            # Détection robuste des erreurs TSC/Build
+            has_build_errors = False
+            if target_module:
+                 # Erreur si le module cible a échoué
+                 has_build_errors = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag or f"[NEXT {target_module}] ❌" in terminal_diag
+            else:
+                 # Erreur si n'importe quel module a échoué (fallback)
+                 has_build_errors = "❌ ÉCHEC" in terminal_diag
+            
+            generation_failed = state.get("validation_status") == "REJETÉ" or state.get("last_error", "") or has_build_errors
+            structure_valid = state.get("validation_status") not in ["STRUCTURE_KO", "PATH_BLOCKED", "STRUCTURE_INVALID"]
             
             logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
             
             # ─── HARD STRUCTURE VALIDATION ───
-            structure_valid = state.get("structure_valid", True)
-            audit_errors = state.get("audit_errors", [])
-
-            # Si aucune erreur réelle → considérer valide
-            if not audit_errors:
-                structure_valid = True
-                state["structure_valid"] = True
+            # On respecte l'état calculé par TaskEnforcer ou PathGuard
+            structure_valid = state.get("validation_status") not in ["STRUCTURE_KO", "PATH_BLOCKED", "STRUCTURE_INVALID"]
+            
+            # 🛡️ ANTI-BYPASS: Si le statut est déjà REJETÉ ou FAILED, on ne l'auto-valide pas ici
+            if state.get("validation_status") in ["REJETÉ", "VALIDATION_FAILED"]:
+                structure_valid = False
+                logger.warning(f"⚠️ Structure validée comme FALSE car status={state.get('validation_status')}")
 
             if not structure_valid:
                 logger.error("❌ Structure validation failed. Aborting audit.")
@@ -1417,18 +1429,20 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             final_score = int(result.get("score_conformite", 0))
             
             # 🛡️ IMPROVED AUDIT LOGIC:
-            # - Si génération échouée ET structure invalide → REJETÉ
-            # - Sinon, on accepte le verdict du verifier
-            if generation_failed and not structure_valid:
-                logger.warning(f"⚠️ Génération échouée ET structure invalide → REJET")
+            # - Si génération échouée OU structure invalide → REJETÉ
+            if generation_failed or not structure_valid or verifier_status == "REJETÉ":
+                if generation_failed:
+                    logger.warning(f"⚠️ Audit REJETÉ: La génération technique a échoué (TSC errors).")
+                elif not structure_valid:
+                    logger.warning(f"⚠️ Audit REJETÉ: La structure demandée est invalide ou incomplète.")
+                
                 status = "REJETÉ"
-                feedback_msg = f"Generation erro detected and structure is invalid. {result.get('action_corrective', '')}"
+                feedback_msg = result.get('action_corrective', '')
+                if not feedback_msg and generation_failed:
+                    feedback_msg = "TypeScript validation failed. Please fix the compilation errors in the terminal diagnostics."
             else:
-                status = verifier_status
-                feedback_msg = result.get('action_corrective', '') if verifier_status == "REJETÉ" else ""
-                if generation_failed and structure_valid:
-                    logger.warning(f"⚠️ Génération échouée MAIS structure valide → APPROUVÉ avec alerte")
-                    logger.info(f"✅ Au moins la structure demandée a été générée correctement.")
+                status = "APPROUVÉ"
+                feedback_msg = ""
             
             if status == "APPROUVÉ":
                 logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")

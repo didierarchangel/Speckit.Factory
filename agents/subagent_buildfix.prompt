@@ -279,7 +279,7 @@ Scripts standards attendus :
 "scripts": {{
   "dev": "nodemon src/server.ts",
   "build": "tsc",
-  "start": "node dist/server.js"
+  "start": "ts-node src/server.ts"
 }}
 
 Si aucune erreur terminale n'est fournie :
