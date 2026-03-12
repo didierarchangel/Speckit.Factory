@@ -1652,8 +1652,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 continue
             
             # Pattern 0: Répertoires seuls (finit par /)
-            dir_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+/)`', line)
-            for path in dir_paths:
+            # 1. Dans des backticks (priorité)
+            dir_paths_bt = re.findall(r'`([^` ]+/)`', line)
+            # 2. Sans backticks (si ça commence par un module connu)
+            dir_paths_raw = re.findall(r'(?:^|\s)((?:backend/|frontend/|mobile/)[a-zA-Z0-9_\-./\\]+/)', line)
+            
+            for path in (dir_paths_bt + dir_paths_raw):
                 path = path.replace('\\', '/')
                 if path not in seen_full_paths:
                     required_files.append(path)

@@ -382,8 +382,20 @@ class EtapeManager:
                         exists_as_dep = self._dependency_installed(check_root, item)
                         
                         if not (exists_as_file or exists_as_dep):
-                            all_ok = False
-                            missing_items.append(item)
+                            # --- Directory Enforcer / Auto-Correction ---
+                            if item.endswith('/') or item.endswith('\\'):
+                                try:
+                                    dir_path = check_root / item
+                                    dir_path.mkdir(parents=True, exist_ok=True)
+                                    (dir_path / ".gitkeep").touch()
+                                    logger.info(f"✨ Auto-created missing directory: {item}")
+                                    exists_as_file = True # Now it exists
+                                except Exception as e:
+                                    logger.error(f"❌ Failed to auto-create directory {item}: {e}")
+                            
+                            if not (exists_as_file or exists_as_dep):
+                                all_ok = False
+                                missing_items.append(item)
                     
                     if all_ok:
                         updated_lines.append(line.replace("[ ]", "[x]"))
