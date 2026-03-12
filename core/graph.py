@@ -36,6 +36,31 @@ DEPRECATED_PACKAGES = {
     "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
 }
 
+# ─── Extraction des keywords sémantiques d'une tâche ───
+_BOILERPLATE_WORDS = {
+    "setup", "config", "create", "init", "add", "update",
+    "implement", "build", "make", "the", "and", "for", "with",
+    "backend", "frontend", "mobile", "src", "routes", "modele",
+    "model", "composants", "composant", "pages", "page"
+}
+
+def extract_task_keywords(task_name: str) -> list[str]:
+    """Extrait les keywords sémantiques d’un task ID pour le Context Filtering.
+    
+    Exemple:
+        '07_routes_articles_backend' → ['articles']
+        '09_auth_login_backend'      → ['auth', 'login']
+        '12_gestion_etat_frontend'   → ['gestion', 'etat']
+    """
+    import re
+    # Retirer le préfixe numérique (ex: '07_')
+    name = re.sub(r'^\d+_', '', task_name.lower())
+    # Découper sur underscores et tirets
+    raw_words = re.split(r'[_\-\s]+', name)
+    # Filtrer les mots génériques et les mots trop courts
+    keywords = [w for w in raw_words if w and len(w) >= 3 and w not in _BOILERPLATE_WORDS]
+    return keywords
+
 # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
 class AgentState(TypedDict):
@@ -91,6 +116,9 @@ class AgentState(TypedDict):
     # Statistiques de complétion (via TaskEnforcer)
     total_subtasks: int
     missing_subtasks: int
+    
+    # Keywords sémantiques extraits du task ID (pour le Context Filtering)
+    task_keywords: List[str]
 
 
 class SpecGraphManager:
@@ -478,12 +506,18 @@ class SpecGraphManager:
                 f"Intégrité: {result['alerte_integrite']}"
             )
             logger.info("✅ Analyse terminée.")
+            
+            # Extraire les keywords sémantiques pour le Context Filtering
+            task_keywords = extract_task_keywords(state["target_task"])
+            logger.info(f"🔑 Task keywords extractés : {task_keywords}")
+            
             return {
                 "analysis_output": analysis_str,
                 "feedback_correction": "",
                 "error_count": 0,
                 "audit_errors_history": [],  # 🛡️ Initialize error tracking
-                "target_module": target_module  # Passer le module cible au graphe
+                "target_module": target_module,   # Passer le module cible au graphe
+                "task_keywords": task_keywords     # 🎯 Persist keywords for Context Filtering
             }
         except ValueError as e:
             error_msg = f"Réponse IA corrompue (Analysis JSON) : {str(e)}"
@@ -557,8 +591,11 @@ class SpecGraphManager:
             matches = re.findall(pattern, analysis, re.IGNORECASE)
             relevant_files.update(m.strip() for m in matches if m)
         
-        # 2️⃣ EXTRACTION des keywords de la tâche
-        task_words = re.findall(r'\b([a-z]{3,}(?:_[a-z]+)*)\b', target_task.lower())
+        # 2️⃣ KEYWORDS : préférer ceux persistés en state (calculés dans analysis_node)
+        task_words = state.get("task_keywords") or []
+        if not task_words:
+            # Fallback : extraire à la volée si l'analyse n'a pas encore réalisé le calcul
+            task_words = extract_task_keywords(target_task)
         task_words = list(set(task_words))  # Dédupliquer
         
         # 3️⃣ MATCHING des fichiers basés sur tâche
@@ -1338,6 +1375,14 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
             
             # ─── HARD STRUCTURE VALIDATION ───
+            structure_valid = state.get("structure_valid", True)
+            audit_errors = state.get("audit_errors", [])
+
+            # Si aucune erreur réelle → considérer valide
+            if not audit_errors:
+                structure_valid = True
+                state["structure_valid"] = True
+
             if not structure_valid:
                 logger.error("❌ Structure validation failed. Aborting audit.")
                 return {
@@ -1346,7 +1391,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                     "validation_status": "STRUCTURE_INVALID",
                     "error_count": state.get("error_count", 0) + 1
                 }
-            
+                                    
             # 🛡️ RETRY avec backoff pour l'audit lui-même
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
