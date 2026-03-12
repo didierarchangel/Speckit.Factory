@@ -12,6 +12,18 @@ logger = logging.getLogger(__name__)
 class FileManager:
     """Gestionnaire de fichiers sécurisé pour Speckit.Factory"""
     
+    # 🛡️ CHEMINS PROTÉGÉS - Ne jamais rediriger ou dupliquer
+    PROTECTED_PATHS = frozenset([
+        "Constitution/",
+        "Speckit/",
+        ".git/",
+        ".env",
+        "LICENSE",
+        "README",
+        "package.json",
+        "pyproject.toml"
+    ])
+    
     # Central Framework Mapping Table - Only 3 frameworks: React, Next.js, Vue
     # Organized with consistent directory naming and build configurations
     FRAMEWORK_MAP = {
@@ -248,6 +260,11 @@ class FileManager:
     def normalize_path(self, path: str, framework: str = None) -> str:
         """Normalise les chemins selon le framework (react, next, vue).
         
+        🛡️ PROTECTIONS:
+        1. Constitution/, Speckit/, .git/ → retourner tel quel (chemins obligatoires)
+        2. Si déjà complet (frontend/..., backend/...) → retourner tel quel
+        3. Detecter les chemins "loose" et les ajouter aux bons dossiers
+        
         Stratégie:
         1. Si déjà complet (frontend/..., backend/...) → retourner tel quel
         2. Ajouter src/ si nécessaire (React, Vue)
@@ -266,9 +283,15 @@ class FileManager:
         # Nettoyer le chemin
         path = path.strip().replace('\\', '/')
         
-        # SÉCURITÉ : Rejeter les chemins non sûrs
+        # 🛡️ SÉCURITÉ : Rejeter les chemins non sûrs
         if ".." in path or path.startswith('/') or ':' in path:
             raise ValueError(f"🛑 UNSAFE PATH DETECTED: {path} (contains .. or absolute path)")
+        
+        # 🛡️ NIVEAU 0 : CHEMINS PROTÉGÉS - Retourner immédiatement sans modification
+        for protected in self.PROTECTED_PATHS:
+            if path.startswith(protected):
+                logger.info(f"🛡️ Protected path passthrough (no redirection): {path}")
+                return path
         
         # Si déjà complet, retourner
         if path.startswith(('frontend/', 'backend/')):
@@ -517,6 +540,18 @@ class FileManager:
                         logger.info(f"  🔧 Path normalized: '{original_path}' → '{file_path_str}'")
                     else:
                         logger.debug(f"  ✓ Path already valid: {file_path_str}")
+                    
+                    # 🛡️ SECONDE COUCHE : BLOQUER LES CHEMINS PROTÉGÉS
+                    for protected in self.PROTECTED_PATHS:
+                        if file_path_str.startswith(protected) and file_path_str != original_path:
+                            # Si le chemin a été redirigé vers un chemin protégé, rejeter
+                            logger.error(f"  🛑 BLOCKED: Attempt to write to protected path '{file_path_str}' (originally: '{original_path}')")
+                            logger.error(f"        Protected paths cannot be auto-redirected: {', '.join(self.PROTECTED_PATHS)}")
+                            failed_files.append({"path": original_path, "error": f"Protected path: {protected}"})
+                            continue
+                        elif file_path_str.startswith(protected) and file_path_str == original_path:
+                            # Si c'est intentionnel (même chemin en entrée), log mais accepter
+                            logger.info(f"  ✅ Explicit protected path write allowed: {file_path_str}")
                     
                     # --- FILTRE PHYSIQUE : GOLDEN TEMPLATE OVERRIDE ---
                     final_content = ai_content

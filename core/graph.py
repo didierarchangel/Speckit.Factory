@@ -69,6 +69,7 @@ class AgentState(TypedDict):
     # Gestion des erreurs et boucle
     error_count: int 
     last_error: str
+    audit_errors_history: List[str]  # 🛡️ Historique des erreurs d'audit pour détecter les répétitions
     
     # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
     user_instruction: str
@@ -457,6 +458,7 @@ class SpecGraphManager:
                 "analysis_output": analysis_str,
                 "feedback_correction": "",
                 "error_count": 0,
+                "audit_errors_history": [],  # 🛡️ Initialize error tracking
                 "target_module": target_module  # Passer le module cible au graphe
             }
         except ValueError as e:
@@ -499,6 +501,133 @@ class SpecGraphManager:
         logger.info(f"📸 Snapshot disque : {len(blocks)} fichiers lus.")
         return snapshot
 
+    def _get_filtered_context(self, state: AgentState) -> dict:
+        """Filtre le code_map et file_tree pour réduire le contexte LLM.
+        
+        Stratégie de réduction:
+        - Extraire SEULEMENT les fichiers pertinents pour la tâche cible
+        - Inclure les dépendances détectées  
+        - Limiter à ~30-40 fichiers max
+        - Idéal pour réduire du contexte 50-70% sans perdre de sémantique
+        
+        Le contexte réduit reste suffisant pour la génération avec la semantic map.
+        """
+        import json, re
+        
+        # Extraire les fichiers et contextes pertinents
+        analysis = state.get("analysis_output", "")
+        code_map_str = state.get("code_map", "{}")
+        file_tree_str = state.get("file_tree", "")
+        target_task = state.get("target_task", "")
+        
+        relevant_files = set()
+        
+        # 1️⃣ EXTRACTION AGRESSIVE des fichiers mentionnés dans analysis
+        # Patterns: "fichier: X", "create X", import statements, etc.
+        file_patterns = [
+            r'(?:files?|fichiers?|path|chemin|import|from)\s*:?\s+["\']?([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)["\']?',
+            r'(?:create|créer|modify|modifier|update)\s+([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
+            r'(?:api|route|endpoint|endpoint_|controller|Controller|service|Service)\s*:\s*([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
+        ]
+        for pattern in file_patterns:
+            matches = re.findall(pattern, analysis, re.IGNORECASE)
+            relevant_files.update(m.strip() for m in matches if m)
+        
+        # 2️⃣ EXTRACTION des keywords de la tâche
+        task_words = re.findall(r'\b([a-z]{3,}(?:_[a-z]+)*)\b', target_task.lower())
+        task_words = list(set(task_words))  # Dédupliquer
+        
+        # 3️⃣ MATCHING des fichiers basés sur tâche
+        # Ex: si tâche ="create_user_form", chercher user, form, User, Form
+        for keyword in task_words:
+            for line in file_tree_str.split('\n'):
+                file_line = line.strip().lower()
+                if file_line and (keyword in file_line or file_line.startswith(keyword)):
+                    relevant_files.add(line.strip())
+        
+        # 4️⃣ FICHIERS DE CONFIG obligatoires
+        config_patterns = [
+            'package.json', 'tsconfig', 'index.ts', 'index.tsx', 'index.js', 
+            'env', 'types.ts', 'interfaces', '.ts'  # Fichier de types général
+        ]
+        for line in file_tree_str.split('\n'):
+            if line.strip():
+                for config in config_patterns:
+                    if config.lower() in line.lower():
+                        relevant_files.add(line.strip())
+                        break
+        
+        # 5️⃣ PARSER code_map et FILTRER
+        try:
+            code_map_dict = json.loads(code_map_str) if code_map_str and code_map_str != "{}" else {}
+        except:
+            code_map_dict = {}
+        
+        filtered_code_map = {}
+        
+        # Inclure fichiers qui match any relevant criterion
+        for file_path in code_map_dict.keys():
+            # Critère 1: Explicitement mentionné dans analysis
+            if file_path in relevant_files or any(rp in file_path for rp in relevant_files):
+                filtered_code_map[file_path] = code_map_dict[file_path]
+                continue
+            
+            # Critère 2: Contient un keyword de tâche
+            if any(kw in file_path.lower() for kw in task_words):
+                filtered_code_map[file_path] = code_map_dict[file_path]
+                continue
+            
+            # Critère 3: Est un fichier de config/index important
+            if any(config.lower() in file_path.lower() for config in config_patterns):
+                filtered_code_map[file_path] = code_map_dict[file_path]
+                continue
+        
+        # Fallback: si RIEN n'est trouvé relevé, inclure les premiers fichiers pertinents
+        if not filtered_code_map and code_map_dict:
+            # Prioriser les fichiers mentionnés dans analysis ou contenant keywords
+            priority_files = [f for f in code_map_dict.keys() 
+                            if any(kw in f.lower() for kw in task_words)]
+            if not priority_files:
+                # Aucune priorité trouvée, prendre les premiers
+                priority_files = list(code_map_dict.keys())[:15]
+            
+            for f in priority_files[:25]:  # Max 25 fichiers en fallback
+                filtered_code_map[f] = code_map_dict[f]
+        
+        # 6️⃣ LIMITER STRICTEMENT la taille: max 35 fichiers
+        if len(filtered_code_map) > 35:
+            # Garder les plus pertinents (avec keywords de tâche en priorité)
+            priority = sorted(filtered_code_map.keys(), 
+                            key=lambda f: sum(1 for kw in task_words if kw in f.lower()),
+                            reverse=True)
+            filtered_code_map = {f: code_map_dict[f] for f in priority[:35]}
+        
+        # 7️⃣ FILTRER file_tree pour correspondre
+        filtered_file_tree = []
+        for line in file_tree_str.split('\n'):
+            if not line.strip():
+                continue
+            # Inclure si: dans filtered_code_map ou dans relevant_files
+            if any(fp in line for fp in filtered_code_map.keys()) or \
+               any(rf in line for rf in relevant_files) or \
+               any(kw.lower() in line.lower() for kw in task_words) or \
+               any(cfg.lower() in line.lower() for cfg in config_patterns):
+                filtered_file_tree.append(line.strip())
+        
+        # Limite stricte sur file_tree aussi
+        if len(filtered_file_tree) > 40:
+            filtered_file_tree = filtered_file_tree[:40]
+        
+        logger.info(f"📊 Context Filtering: {len(code_map_dict)} → {len(filtered_code_map)} files in code_map, " +
+                   f"file_tree: ~{len(file_tree_str.split(chr(10)))} → {len(filtered_file_tree)} lines | " +
+                   f"Task keywords: {task_words[:3]}")  # Log first 3 keywords
+        
+        return {
+            "code_map_filtered": json.dumps(filtered_code_map),
+            "file_tree_filtered": "\n".join(filtered_file_tree)
+        }
+
+
     def impl_node(self, state: AgentState) -> dict:
         """Nœud 2 : Génération de code pur (Exécutant)."""
         logger.info(f"💻 Début de la Génération de code pour la tâche : {state['target_task']}")
@@ -526,19 +655,42 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
+            # 🛡️ FILRAGE DE CONTEXTE : Réduire la taille avant d'envoyer au LLM
+            filtered = self._get_filtered_context(state)
+            code_map_to_use = filtered.get("code_map_filtered", state.get("code_map", ""))
+            file_tree_to_use = filtered.get("file_tree_filtered", state.get("file_tree", ""))
+            
+            # 🛡️ TRUNCATION DE CONSTITUTION si > 8KB (contexte LLM trop large)
+            constitution_content = state["constitution_content"]
+            if len(constitution_content) > 8000:
+                # Prendre les premiers 7KB seulement pour laisser place au reste
+                constitution_content = constitution_content[:7000] + "\n[... TRUNCATED FOR CONTEXT LIMIT ...]"
+                logger.warning(f"⚠️ Constitution content truncated from {len(state['constitution_content'])} to 7000 chars")
+            
+            # 🛡️ TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode)
+            if len(existing_snapshot) > 10000:
+                existing_snapshot = existing_snapshot[:9800] + "\n// [... CODE TRUNCATED FOR CONTEXT LIMIT ...]"
+                logger.warning(f"⚠️ Existing snapshot truncated from {len(state.get('existing_code_snapshot', ''))} to 9800 chars")
+            
+            # 🛡️ TRUNCATION DE analysis_output si > 5KB
+            analysis_output = state.get("analysis_output", "")
+            if len(analysis_output) > 5000:
+                analysis_output = analysis_output[:4800] + "\n[... ANALYSIS TRUNCATED FOR CONTEXT LIMIT ...]"
+                logger.warning(f"⚠️ Analysis output truncated to 4800 chars")
+            
             # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
-                "constitution_content": state["constitution_content"],
+                "constitution_content": constitution_content,
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
                 "pending_tasks": state["pending_tasks"],
                 "target_task": state["target_task"],
-                "analysis_output": state["analysis_output"],
+                "analysis_output": analysis_output,
                 "feedback_correction": state.get("feedback_correction", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
-                "code_map": state.get("code_map", "Non générée"),
-                "file_tree": state.get("file_tree", "Non générée"),
+                "code_map": code_map_to_use,
+                "file_tree": file_tree_to_use,
                 "design_spec": state.get("design_spec", "Non générée"),
                 "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
@@ -1139,17 +1291,32 @@ class SpecGraphManager:
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', 'Aucune.' if not generation_failed else 'Génération partiellement échouée Mais structure valide.'),
-                    "feedback_correction": ""
+                    "feedback_correction": "",
+                    "audit_errors_history": state.get("audit_errors_history", [])
                 }
             else:
                 new_error_count = state.get("error_count", 0) + 1
+                
+                # 🛡️ TRACK audit errors to detect recurring issues
+                audit_errors = state.get("audit_errors_history", [])
+                error_summary = f"{result.get('alertes', '')[:100]}..."  # First 100 chars
+                audit_errors.append(error_summary)
+                
+                # 🔍 DETECT RECURRING ERRORS (same error twice = can't fix it automatically)
+                is_recurring_error = len(audit_errors) >= 2 and audit_errors[-1] == audit_errors[-2]
+                if is_recurring_error:
+                    logger.error(f"🔄 RECURRING ERROR DETECTED: {audit_errors[-1]}")
+                    logger.error(f"🛑 Same error appeared {len([e for e in audit_errors if e == audit_errors[-1]])} times. Stopping retries.")
+                    new_error_count = MAX_RETRIES  # Force END by marking max retries reached
+                
                 return {
                     "validation_status": "REJETÉ", 
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', ''),
                     "feedback_correction": feedback_msg,
-                    "error_count": new_error_count
+                    "error_count": new_error_count,
+                    "audit_errors_history": audit_errors
                 }
         except Exception as e:
             logger.error(f"❌ Erreur audit : {e}")
@@ -2011,8 +2178,20 @@ class SpecGraphManager:
         return "verify_node"
 
     def route_after_verify(self, state: AgentState) -> str:
-        if state.get("validation_status") == "APPROUVÉ" or state.get("error_count", 0) >= MAX_RETRIES:
+        """Route après audit: APPROUVÉ → END, REJETÉ → retry impl_node (si < MAX_RETRIES)."""
+        error_count = state.get("error_count", 0)
+        validation_status = state.get("validation_status", "")
+        
+        if validation_status == "APPROUVÉ":
+            logger.info(f"✅ AUDIT APPROVED: Task complete!")
             return END
+        
+        if error_count >= MAX_RETRIES:
+            logger.error(f"🛑 AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
+            logger.error(f"❌ Audit errors: {state.get('audit_errors_history', [])}")
+            return END
+        
+        logger.warning(f"⏮️ AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
         return "impl_node"
 
     def _build_graph(self):
