@@ -110,12 +110,22 @@ Si le project est React (dossier `frontend/`) :
 - Consumer doit être ENFANT du Provider, pas frère
 - Vérifier que Provider exporte le context : `export const MyContext = createContext()`
 
-## 9. Event Handler Type Errors
-**Problème**: `TS2769: No overload matches this call` pour onClick, onChange, etc.
-- Typer correctement les handlers :
-  - ✅ Correct: `onClick={{ (e: React.MouseEvent) => handleClick(e) }}`
   - ✅ Correct: `onChange={{ (e: React.ChangeEvent<HTMLInputElement>) => handleChange(e.target.value) }}`
   - ❌ Incorrect: `onClick={{ handleClick() }}` (appel au lieu de référence)
+
+## 11. Express Return Type (CRITIQUE)
+**Problème**: `Type 'Response<any, ...>' is not assignable to type 'void'` ou `Promise<void>`
+- **Cause**: Utilisation de `return res.status(...).json(...)`.
+- **Solution**: Supprimer le `return` devant `res`. Si une interruption est nécessaire, faire `res.json(...); return;` sur deux lignes.
+  - ✅ Correct: `res.status(200).json(data); return;`
+  - ❌ Incorrect: `return res.status(200).json(data);`
+
+## 12. Zod Type vs Value Mismatch
+**Problème**: `'XInput' refers to a value, but is being used as a type here`
+- **Cause**: Utilisation du schéma Zod comme type de paramètre.
+- **Solution**: Importer et utiliser le type extrait (souvent fini par `Type`).
+  - ✅ Correct: `data: CreateUserType`
+  - ❌ Incorrect: `data: CreateUserSchema`
 
 ## 10. Component Memoization Issues
 **Problème**: React.memo ou useMemo causing type errors

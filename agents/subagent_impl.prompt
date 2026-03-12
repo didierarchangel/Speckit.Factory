@@ -59,12 +59,14 @@ Speckit supporte 3 frameworks frontend modernes. Respecte STRICTEMENT les conven
 **Build**: `npm run build` (Next.js)
 **Validation**: `npx tsc --noEmit`
 
-⚠️ **FRAMEWORK DETECTION**
-Détecte le framework du projet AVANT de générer du code :
-- Si `next.config.*` existe → Next.js
-- Si `vite.config.*` + `.vue` files → Vue
-- Si `vite.config.*` + `.tsx` files → React
 - Default → React
+
+⚠️ **BOOTSTRAP OBLIGATOIRE (Vite)**
+Si tu es à l'étape Setup ou Structure d'un projet Vite, tu DOIS obligatoirement générer :
+1. `frontend/index.html` (avec `<div id="root"></div>` et script route)
+2. `frontend/vite.config.ts` (avec plugin react/vue et proxy API)
+3. `frontend/src/index.css` (avec directives @tailwind)
+4. `frontend/src/main.tsx` (ou main.ts/main.js)
 
 # MODE PATCH (Activé automatiquement sur correction)
 
@@ -211,10 +213,16 @@ Règle 4 :
 Modularité et Testabilité.  
 Chaque fonction doit être prête à être testée.
 
-Règle 4.1 : FIDÉLITÉ DESIGN
-Tu DOIS respecter scrupuleusement les classes Tailwind fournies dans {design_spec}. 
-Si un pattern (ex: premium) est spécifié, utilise ses classes pour les boutons, tables et cartes.
 Ne tente pas d'inventer ton propre design si des spécifications sont présentes.
+
+Règle 4.2 : COHÉRENCE DES ENTITÉS (TRANSVERSALE)
+Tu DOIS maintenir une cohérence absolue des noms de champs (fields) entre les couches :
+- Modèle de données (ex: Article.model.ts)
+- Services (ex: article.service.ts)
+- Contrôleurs (ex: article.controller.ts)
+- Validateurs Zod (ex: article.validator.ts)
+Si le modèle utilise `name`, `description`, `price`, n'utilise JAMAIS `title`, `content`, `amount` dans les autres fichiers.
+🚩 **CONSEIL** : Lis toujours le fichier de Modèle existant AVANT de coder un service ou contrôleur.
 
 Règle 5 : TESTS ET PLACEHOLDERS
 
@@ -296,9 +304,13 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 2.  **Validation** : La fonction `validate()` utilisée dans les contrôleurs attend TOUJOURS l'objet Zod (`camelCase`).
 3.  **Imports** : Lorsque tu implémentes un contrôleur, vérifie que tu as importé les DEUX (le Type pour le typage Express, et l'Objet pour la validation).
 
-# RÈGLE 11.1 : RÈGLES TYPESCRIPT STRICTES (ZÉRO ERREUR TSC)
 - **INTERDICTION de `any`** : Toutes les variables, paramètres et retours doivent être explicitement typés.
-- **MIDDLEWARE EXPRESS** : Un middleware ne doit JAMAIS retourner une `Response`. Il doit retourner `void`. L'envoi dune réponse (`res.send`, `res.json`) interrompt le flux mais le type de retour de la fonction doit rester `void`.
+- **EXPRESS HANDLERS & MIDDLEWARE** : Toute fonction gérant une requête (Controller ou Middleware) ne doit JAMAIS retourner une `Response`. Elle doit retourner `Promise<void>` ou `void`. 
+  - ✅ Correct: `res.status(200).json(data); return;`
+  - ❌ Incorrect: `return res.status(200).json(data);`
+- **ZOD TYPE VS VALUE** : Ne confonds pas le Schéma (valeur) et le Type (interface).
+  - ✅ Correct: `const register = async (data: RegisterInputType) => ...`
+  - ❌ Incorrect: `const register = async (data: RegisterInput) => ...` (RegisterInput est l'objet Zod)
 - **IMPORTS RÉELS** : Tous les imports de fichiers internes doivent correspondre à des fichiers existants dans la {code_map} ou créés dans cette tâche.
 - **TYPES GLOBAUX** : Utilise les types de la Constitution pour les entités et les DTOs.
 
