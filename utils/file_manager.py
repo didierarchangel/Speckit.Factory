@@ -394,10 +394,15 @@ class FileManager:
             logger.error(f"🛑 SECURITY: Path escape attempt blocked: {relative_path}")
             return False
 
-        # SÉCURITÉ #3 : Rejeter les chemins vers des dossiers
+        # SÉCURITÉ #3 : Gérer les dossiers (se termine par /)
         if relative_path.endswith('/') or relative_path.endswith('\\'):
-            logger.error(f"🛑 SECURITY: Cannot write to directory as file: {relative_path}")
-            return False
+            try:
+                file_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"📁 Directory created: {relative_path}")
+                return True
+            except Exception as e:
+                logger.error(f"❌ Error creating directory {relative_path}: {e}")
+                return False
         
         # SÉCURITÉ #4 : Rejeter les chemins qui ne contiennent pas d'extension fileou chemin invalide
         if not '.' in relative_path.split('/')[-1]:  # Le dernier composant doit avoir une extension
@@ -517,8 +522,8 @@ class FileManager:
         logger.info("📦 Starting file extraction and persistence...")
         logger.info("=" * 70)
 
-        # Regex robuste pour détecter les en-têtes de fichiers
-        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        # Regex robuste pour détecter les en-têtes de fichiers (inclut maintenant les dossiers finissant par /)
+        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+(?:\.[a-zA-Z0-9]+|/))\]?.*$'
         file_blocks = re.split(pattern, code)
         
         total_files_detected = (len(file_blocks) - 1) // 2

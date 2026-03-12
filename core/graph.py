@@ -1651,8 +1651,15 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             if not line.strip():
                 continue
             
-            # Pattern 1: Chemin COMPLET avec module inclus
-            # Cherche: `backend/src/..` ou `frontend/src/...` ou `path/to/file.ext`
+            # Pattern 0: Répertoires seuls (finit par /)
+            dir_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+/)`', line)
+            for path in dir_paths:
+                path = path.replace('\\', '/')
+                if path not in seen_full_paths:
+                    required_files.append(path)
+                    seen_full_paths.add(path)
+
+            # Pattern 1: Chemin COMPLET avec module inclus (fichiers avec extension)
             full_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)`', line)
             
             full_path_suffixes = set()  # Garder trace des fichiers trouvés avec chemin complet
@@ -1757,7 +1764,15 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
             # Créer les répertoires parents
             try:
-                file_path.parent.mkdir(parents=True, exist_ok=True)
+                if required_file.endswith('/'):
+                    file_path.mkdir(parents=True, exist_ok=True)
+                    # Touch .gitkeep to ensure the directory is recognized as "created" by validators
+                    (file_path / ".gitkeep").touch()
+                    logger.info(f"✨ Directory artifact created: {required_file}")
+                    created_files.append(required_file)
+                    continue
+                else:
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
             except Exception as e:
                 logger.error(f"❌ Erreur création répertoires pour {required_file}: {e}")
                 continue
