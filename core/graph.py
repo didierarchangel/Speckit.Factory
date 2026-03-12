@@ -27,6 +27,14 @@ logger.info(f"🔧 npm_path détecté : {npm_path}")
 MAX_RETRIES = 3
 MAX_DEP_INSTALL_ATTEMPTS = 3  # Limit dependency install loops
 MAX_GRAPH_STEPS = 10  # 🛡️ Maximum number of graph routing decisions (prevents infinite cycles)
+MAX_DEPENDENCY_CYCLES = 2  # 🛡️ Max cycles in Diagnostics → TaskEnforcer → InstallDeps loop
+
+# ─── Packages dépréciés que le LLM hallucine souvent ───
+DEPRECATED_PACKAGES = {
+    "@testing-library/react-hooks": "@testing-library/react",  # Déprécié depuis 2020
+    "react-test-utils": "@testing-library/react",              # Ancien pattern
+    "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
+}
 
 # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
@@ -970,6 +978,21 @@ class SpecGraphManager:
         
         logger.info(f"🔍 Scanner détecté {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
         
+        # 🛡️ FILTRE DEPRECATED_PACKAGES: Remplacer les packages halluciner/dépréciés
+        if missing_from_scanner:
+            replaced = []
+            for m in missing_from_scanner:
+                if m in DEPRECATED_PACKAGES:
+                    replacement = DEPRECATED_PACKAGES[m]
+                    logger.info(f"🔄 Package déprécié {m} → remplacé par {replacement}")
+                    replaced.append(replacement)
+                else:
+                    replaced.append(m)
+            missing_from_scanner = list(set(replaced))  # Deduplicate si plusieurs pointent au même replacement
+        
+        # 🛡️ STOCKER LE RÉSULTAT DU SCANNER COMME SOURCE DE VÉRITÉ
+        state["scanner_missing_modules"] = missing_from_scanner
+        
         # ═══ RÈGLE ARCHITECTURALE ═══
         # Si le scanner dit 0 → c'est 0
         # Pas de fallback au LLM (qui peut halluciner)
@@ -1855,11 +1878,42 @@ class SpecGraphManager:
             return "impl_node"
         return "persist_node"
 
+    def route_from_install_deps(self, state: AgentState) -> str:
+        """
+        🔴 PROTECTION STRUCTURALE: Casse la boucle Diagnostics → TaskEnforcer → InstallDeps → Diagnostics
+        
+        Après install_deps_node, décide:
+        - S'il y a vraiment des modules manquants → retour à diagnostic
+        - Sinon ou cycle max atteint → sortie vers verify (fin)
+        """
+        # 🛡️ Compteur de cycles: si trop de cycles dépendances, sortir
+        dep_cycles = state.get("dependency_cycles", 0)
+        if dep_cycles >= MAX_DEPENDENCY_CYCLES:
+            logger.warning(f"⚠️ Dependency cycle limit reached ({MAX_DEPENDENCY_CYCLES} cycles). Breaking cycle.")
+            state["missing_modules"] = []
+            return "verify_node"
+        
+        state["dependency_cycles"] = dep_cycles + 1
+        logger.debug(f"📊 Dependency cycle {state['dependency_cycles']}/{MAX_DEPENDENCY_CYCLES}")
+        
+        # Si scanner a trouvé 0 modules → pas de raison de re-scanner
+        scanner_missing = state.get("scanner_missing_modules", [])
+        if not scanner_missing:
+            logger.info("✅ Scanner confirme: 0 modules manquants après install_deps. Exiting dependency loop.")
+            state["missing_modules"] = []
+            return "verify_node"
+        
+        # Sinon, on relance le diagnostic
+        logger.warning(f"🔄 Retour à diagnostics pour vérifier installation de {scanner_missing}...")
+        return "diagnostic_node"
+
     def route_after_enf(self, state: AgentState) -> str:
         """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles.
         
         ⚠️ PROTECTIONS MULTI-NIVEAUX:
         - graph_steps: limite totale des cycles du graphe
+        - scanner_missing: source de vérité (TOOLS > LLM)
+        - TEST_LIBS filter: ignore les modules de test halluciner
         - dep_attempts: limite des tentatives d'installation des dépendances
         - error_count: limite des essais de correction
         """
@@ -1874,6 +1928,41 @@ class SpecGraphManager:
         logger.debug(f"📊 Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
         
         # ─────────────────────────────────────────────────────────────
+        
+        # 🔴 PROTECTION ARCHITECTURALE: TOOLS > LLM
+        # Si le scanner (outil fiable) dit 0 modules manquants,
+        # on ignore ce que le LLM/diagnostic dit (peut halluciner)
+        scanner_missing = state.get("scanner_missing_modules", [])
+        llm_missing = state.get("missing_modules", [])
+        
+        if not scanner_missing and llm_missing:
+            # Le scanner contredit le LLM
+            logger.info(f"🧠 SCANNER > LLM: Scanner confirme 0 modules, LLM signale {llm_missing}. Ignoré.")
+            logger.info(f"   (Les modules halluciner sont probablement obsolètes ou non-utilisés)")
+            state["missing_modules"] = []
+            llm_missing = []
+        
+        # 🛡️ Filtrer les modules de test (hallucinations classiques du LLM)
+        TEST_LIBS = {
+            "@testing-library/react-hooks",
+            "@testing-library/react",
+            "@testing-library/dom",
+            "jest",
+            "vitest",
+            "react-test-utils",
+            "react-dom/test-utils"
+        }
+        
+        if llm_missing:
+            filtered_missing = [m for m in llm_missing if m not in TEST_LIBS]
+            if len(filtered_missing) < len(llm_missing):
+                removed = set(llm_missing) - set(filtered_missing)
+                logger.info(f"🧪 Modules de test ignorés (hallucinations classiques): {list(removed)}")
+            state["missing_modules"] = filtered_missing
+            llm_missing = filtered_missing
+        
+        # ─────────────────────────────────────────────────────────────
+        
         target_module = state.get("target_module")
         terminal_diag = state.get("terminal_diagnostics", "")
         
@@ -1891,7 +1980,7 @@ class SpecGraphManager:
             has_tsc_errors_in_target = "❌ ÉCHEC" in terminal_diag
         
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
-        has_missing_modules = len(state.get("missing_modules", [])) > 0
+        has_missing_modules = len(llm_missing) > 0
         
         if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors_in_target or has_structure_errors or has_missing_modules):
             logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
@@ -1901,10 +1990,10 @@ class SpecGraphManager:
             # Protection contre les boucles infinies de dépendances
             dep_attempts = state.get("dep_attempts", 0)
             if dep_attempts < 3:
-                logger.warning(f"📦 Modules manquants détectés {state.get('missing_modules')}. Auto-installation ({dep_attempts+1}/3).")
+                logger.warning(f"📦 Modules manquants détectés {llm_missing}. Auto-installation ({dep_attempts+1}/3).")
                 return "install_deps_node"
             else:
-                logger.error(f"⚠️ Auto-installation a échoué 3 fois pour {state.get('missing_modules')}. Délégation à l'IA.")
+                logger.error(f"⚠️ Auto-installation a échoué 3 fois pour {llm_missing}. Délégation à l'IA.")
                 pass
             
         if has_structure_errors:
@@ -1950,7 +2039,14 @@ class SpecGraphManager:
         self.graph_builder.add_edge("persist_node", "dependency_resolver_node")
         self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
         self.graph_builder.add_edge("validate_dependency_node", "install_deps_node")
-        self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
+        
+        # 🔴 PROTECTION STRUCTURALE: Conditional edge après install_deps pour casser la boucle
+        # Si scanner_missing_modules est vide → sorte du cycle vers verify_node
+        # Sinon → retour à diagnostic_node pour vérifier installation
+        self.graph_builder.add_conditional_edges("install_deps_node", self.route_from_install_deps, {
+            "diagnostic_node": "diagnostic_node",
+            "verify_node": "verify_node"
+        })
         
         # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
         self.graph_builder.add_edge("diagnostic_node", "task_enforcer_node")
