@@ -23,6 +23,30 @@ def is_real_file(path: str):
         ".env", ".yaml", ".yml",
         ".sh", ".css", ".html"
     ))
+    
+STARTUP_INSTRUCTIONS = """
+---
+
+## 🏃‍♂️ Démarrer votre application localement
+
+Une fois les étapes ci-dessus terminées, suivez ces instructions pour lancer vos serveurs.
+
+### 🏠 Backend
+Avant de lancer le serveur pour la première fois :
+```bash
+cd backend
+npm install
+npm start
+```
+
+### 🎨 Frontend
+Avant de lancer le serveur pour la première fois :
+```bash
+cd frontend
+npm install
+npm run dev
+```
+"""
 
 class EtapeManager:
     def __init__(self, model, project_root: str = "."):
@@ -80,6 +104,7 @@ class EtapeManager:
             f.write("# ÉTAPES DU PROJET (etapes.md)\n\n")
             f.write("Ce fichier documente la progression détaillée du projet.\n\n")
             f.write(steps)
+            f.write(STARTUP_INSTRUCTIONS)
 
         logger.info("Fichier etapes.md généré avec succès avec un format granulaire.")
         return steps
@@ -459,14 +484,21 @@ class EtapeManager:
             
             header = ""
             if not self.history_path.exists():
-                header = "# HISTORIQUE DES ÉTAPES RÉALISÉES (EtapesAdd.md)\n\n"
+                header = "# HISTORIQUE DES ÉTAPES RÉALISÉES (EtapesAdd.md)\\n\\n"
             
             with open(self.history_path, "a", encoding="utf-8") as f:
                 if header:
                     f.write(header)
-                f.write(f"### ✅ Étape : {step_id}\n")
-                f.write(f"{synthesis}\n\n---\n\n")
+                f.write(f"### ✅ Étape : {step_id}\\n")
+                f.write(f"{synthesis}\\n\\n---\\n\\n")
             
             logger.info("Synthèse ajoutée à EtapesAdd.md pour l'étape %s.", step_id)
+            
+            # Si toutes les étapes sont terminées, ajouter les instructions de démarrage à la fin
+            progress = self.get_progress()
+            if progress["pending"] == 0:
+                 with open(self.history_path, "a", encoding="utf-8") as f:
+                     f.write(STARTUP_INSTRUCTIONS)
+                 logger.info("Instructions de démarrage ajoutées à la fin de EtapesAdd.md")
         except Exception as e:
             logger.error("Impossible d'écrire l'historique dans EtapesAdd.md : %s", e)
