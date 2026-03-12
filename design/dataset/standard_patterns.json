@@ -1,10 +1,11 @@
 [
     {
         "id": "hero_centered_gradient",
+        "system": "standard",
         "category": "hero",
         "layout": "centered",
         "tailwind": {
-            "container": "py-24 text-center bg-gradient-to-r from-blue-500 to-indigo-600",
+            "container": "py-24 text-center bg-gradient-to-r from-blue-500 to-blue-600",
             "title": "text-5xl font-bold text-white",
             "subtitle": "text-xl text-blue-100 mt-4",
             "button": "mt-8 bg-white text-blue-600 px-6 py-3 rounded-lg"
@@ -17,6 +18,7 @@
     },
     {
         "id": "dashboard_card_standard",
+        "system": "standard",
         "category": "card",
         "layout": "grid",
         "tailwind": {

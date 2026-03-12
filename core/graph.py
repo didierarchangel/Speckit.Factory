@@ -397,9 +397,25 @@ class SpecGraphManager:
         # On utilise le prompt utilisateur ou la tâche cible pour le design
         prompt = state.get("user_instruction") or state["target_task"]
         
+        # 🛡️ MANDATORY CHECK: Only run for frontend/UI related tasks
+        target_module = state.get("target_module")
+        is_ui_task = target_module == "frontend"
+        
+        if not is_ui_task:
+            logger.info("ℹ️ GraphicDesign skipped: Not a UI/Frontend task.")
+            return {"design_spec": {"error": "Skipped (non-UI)", "tailwind": {}}}
+
         try:
             design_result = design_engine.generate(prompt)
-            logger.info(f"✅ Design terminé (Pattern: {design_result.get('pattern', 'Inconnu')}).")
+            # Ensure tailwind rules are always present even if empty
+            if "tailwind" not in design_result:
+                design_result["tailwind"] = {}
+            
+            # 🖼️ NEW: Generate a framework-specific Skeleton "mould"
+            skeleton = design_engine.generate_skeleton(design_result)
+            design_result["skeleton"] = skeleton
+                
+            logger.info(f"✅ Design generated: {design_result.get('pattern', 'default')} with Skeleton.")
             return {"design_spec": design_result}
         except Exception as e:
             logger.error(f"❌ Échec du moteur GraphicDesign : {str(e)}")
@@ -627,6 +643,55 @@ class SpecGraphManager:
             "file_tree_filtered": "\n".join(filtered_file_tree)
         }
 
+    def _format_design_spec_for_prompt(self, design_spec: dict) -> str:
+        """Formate le design_spec en instructions lisibles pour le LLM.
+        
+        Transforme un design_spec JSON complexe en directives claires et actionnables.
+        """
+        if not design_spec or "error" in design_spec:
+            return "NO DESIGN SPECIFICATION PROVIDED. Use standard Tailwind defaults."
+        
+        pattern = design_spec.get("pattern", "N/A")
+        tailwind = design_spec.get("tailwind", {})
+        ui_ast = design_spec.get("ui_ast", {})
+        
+        tailwind_rules = ""
+        if isinstance(tailwind, dict):
+            for k, v in tailwind.items():
+                tailwind_rules += f"- **{k}**: `{v}`\n"
+        
+        skeleton = design_spec.get("skeleton", "")
+        
+        # Build readability-first instructions for the LLM
+        instructions = f"""
+# 🎨 MANDATORY UI DESIGN SYSTEM (TAILWIND)
+
+Use the following Tailwind classes for the UI. DO NOT USE ANY OTHER CLASSES.
+
+## Pattern: {pattern}
+
+{tailwind_rules}
+
+## Structural Constraints:
+- Layout: {ui_ast.get('name', 'Page') if isinstance(ui_ast, dict) else 'Page'}
+- Component hierarchy: {str(ui_ast)[:300]}
+
+## 🧱 THE SKELETON (CRITICAL):
+YOU MUST START FROM THIS SKELETON. Do not generate a new layout structure.
+FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is required.
+
+```tsx
+{skeleton}
+```
+
+## CRITICAL RULES:
+1. Every HTML element MUST use the classes defined above.
+2. For buttons, use `{tailwind.get('primary', 'bg-blue-600 text-white') if isinstance(tailwind, dict) else 'bg-blue-600 text-white'}`.
+3. For cards/containers, use `{tailwind.get('container', 'p-6 bg-white shadow-md') if isinstance(tailwind, dict) else 'p-6 bg-white shadow-md'}`.
+4. Total fidelity to this design system is required.
+"""
+        return instructions
+
 
     def impl_node(self, state: AgentState) -> dict:
         """Nœud 2 : Génération de code pur (Exécutant)."""
@@ -680,13 +745,14 @@ class SpecGraphManager:
                 terminal_diagnostics = terminal_diagnostics[:2800] + "\n[... DIAGNOSTICS TRUNCATED ...]"
                 logger.info(f"ℹ️ Terminal diagnostics truncated to 2800 chars")
             
-            # 🛡️ TRUNCATION DE design_spec (JSON, can be summarized)
-            design_spec = state.get("design_spec", "Non générée")
-            if isinstance(design_spec, str) and len(design_spec) > 2000:
-                design_spec = design_spec[:1800] + "\n[... DESIGN SPEC TRUNCATED ...]"
-                logger.info(f"ℹ️ Design spec truncated to 1800 chars")
+            # 🎨 FORMAT DESIGN SPEC : Rendre lisible et actionnabel pour le LLM
+            raw_design_spec = state.get("design_spec", {"error": "Non générée"})
+            design_spec_formatted = self._format_design_spec_for_prompt(raw_design_spec)
+            if raw_design_spec.get("pattern"):
+                logger.info(f"🎨 Design pattern ready: {raw_design_spec['pattern']} (with Tailwind + AST)")
+            else:
+                logger.warning(f"⚠️ No design pattern found - using defaults")
 
-            # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
             # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
@@ -700,7 +766,7 @@ class SpecGraphManager:
                 "terminal_diagnostics": terminal_diagnostics,  # ← May be truncated (diagnostic only)
                 "code_map": code_map_to_use,  # ← Filtered by _get_filtered_context()
                 "file_tree": file_tree_to_use,  # ← Filtered by _get_filtered_context()
-                "design_spec": design_spec,  # ← May be truncated (non-critical)
+                "design_spec": design_spec_formatted,  # 🎨 ← NOW formatted and readable for LLM
                 "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
                 "existing_code_snapshot": existing_snapshot,  # ← May be truncated (PATCH mode only)
