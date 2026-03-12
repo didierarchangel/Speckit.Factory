@@ -384,11 +384,27 @@ class SpecGraphManager:
 
     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
 
+    def _is_frontend_task(self, task_name: str, checklist: str = "") -> bool:
+        """Détecte avec robustesse si une tâche concerne le frontend."""
+        frontend_keywords = [
+            "frontend/", ".tsx", ".jsx", "react",
+            "component", "tailwind", "page", "ui"
+        ]
+        task_text = f"{task_name}\n{checklist}".lower()
+        return any(k in task_text for k in frontend_keywords)
+
     def GraphicDesign_node(self, state: AgentState) -> dict:
         """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
         logger.info(f"🎨 Début du Design pour la tâche : {state['target_task']}")
         
-        # Initialisation du moteur Design
+        # 🛡️ MANDATORY CHECK: Only run for frontend/UI related tasks
+        is_ui_task = self._is_frontend_task(state.get("target_task", ""), state.get("subtask_checklist", ""))
+        
+        if not is_ui_task:
+            logger.info("⏭️ Skipping GraphicDesignEngine (backend task)")
+            return {"design_spec": {"error": "Skipped (non-UI)", "tailwind": {}}}
+            
+        # Initialisation du moteur Design (déplacé APRÈS le check pour éviter de charger le dataset inutilement)
         design_engine = GraphicDesign(
             dataset_dir=str(self.root / "design" / "dataset"),
             constitution_path=str(self.root / "design" / "constitution_design.yaml")
@@ -397,14 +413,6 @@ class SpecGraphManager:
         # On utilise le prompt utilisateur ou la tâche cible pour le design
         prompt = state.get("user_instruction") or state["target_task"]
         
-        # 🛡️ MANDATORY CHECK: Only run for frontend/UI related tasks
-        target_module = state.get("target_module")
-        is_ui_task = target_module == "frontend"
-        
-        if not is_ui_task:
-            logger.info("ℹ️ GraphicDesign skipped: Not a UI/Frontend task.")
-            return {"design_spec": {"error": "Skipped (non-UI)", "tailwind": {}}}
-
         try:
             design_result = design_engine.generate(prompt)
             # Ensure tailwind rules are always present even if empty
@@ -648,7 +656,13 @@ class SpecGraphManager:
         
         Transforme un design_spec JSON complexe en directives claires et actionnables.
         """
-        if not design_spec or "error" in design_spec:
+        if not design_spec:
+            return "NO DESIGN SPECIFICATION PROVIDED. Use standard Tailwind defaults."
+            
+        if design_spec.get("error") == "Skipped (non-UI)":
+            return ""  # Empty for backend tasks
+            
+        if "error" in design_spec:
             return "NO DESIGN SPECIFICATION PROVIDED. Use standard Tailwind defaults."
         
         pattern = design_spec.get("pattern", "N/A")
@@ -748,7 +762,9 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             # 🎨 FORMAT DESIGN SPEC : Rendre lisible et actionnabel pour le LLM
             raw_design_spec = state.get("design_spec", {"error": "Non générée"})
             design_spec_formatted = self._format_design_spec_for_prompt(raw_design_spec)
-            if raw_design_spec.get("pattern"):
+            if raw_design_spec.get("error") == "Skipped (non-UI)":
+                logger.info("ℹ️ No design pattern needed (Backend task).")
+            elif raw_design_spec.get("pattern"):
                 logger.info(f"🎨 Design pattern ready: {raw_design_spec['pattern']} (with Tailwind + AST)")
             else:
                 logger.warning(f"⚠️ No design pattern found - using defaults")
