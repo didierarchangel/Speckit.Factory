@@ -23,14 +23,14 @@ Description  : Le modèle de base pour toute nouvelle Constitution.
 Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer des bibliothèques non listées ici.
 
 ### 1.1 Backend
-* **Langage** : [Ex: Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)]
+* **Langage** : Node.js 20, TypeScript (Configuration : ES Modules, Target: ES2022)
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/backend`.
 * **Framework Core** : [Ex: Express, NestJS, Fastify]
 * **Base de données** : [Ex: MongoDB via Mongoose, PostgreSQL 16 via Prisma]
 * **Authentification** : [Ex: JWT, Passport.js, NextAuth]
 
 ### 1.2 Frontend (Si applicable)
-* **Langage** : [Ex: TypeScript]
+* **Langage** : TypeScript (Configuration : ES Modules, Target: ES2022)
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/frontend`.
 * **Framework** : [Ex: 
     - **Option A: React 18 avec Vite** : React (^18.2.0) + Vite (^5.1.4) + react-router-dom (^6.22.3)

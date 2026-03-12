@@ -44,8 +44,8 @@ class ConstitutionManager:
             1. L'Architecture (Folders, Layers)
             2. La Stack Technique (Langages, Frameworks, DB) - RESPECTE STRICTEMENT LES PRÉFÉRENCES SUIVANTES :
                - STACK IMPOSÉE : {stack_info}
-               - Note : Si React ou Next.js sont choisis, ils DOIVENT impérativement utiliser Vite.
-               - Note : Si Node.js et TypeScript sont choisis pour le Backend, tu DOIS impérativement préciser la configuration : `Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)`. Cela empêchera l'Auditeur d'exiger des ES Modules.
+               - Note : TOUS les projets (React, Next.js, Backend) DOIVENT impérativement être configurés en **ES Modules (ESM)**. Cela signifie `"type": "module"` dans le `package.json`.
+               - Note : Pour Node.js et TypeScript, tu DOIS impérativement préciser la configuration : `TypeScript (Configuration : ES Modules, Target: ES2022)`.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
             5. Design Intelligence : Tu DOIS impérativement inclure la section "DESIGN CONSTITUTION".
