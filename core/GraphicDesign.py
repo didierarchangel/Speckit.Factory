@@ -64,12 +64,19 @@ class GraphicDesign:
             patterns = self.engine.patterns[:5]
             
         if preferred_system:
-             # 🎯 FIXED: Filter using the SYSTEM field instead of fragile ID matching
+             # Filter using the SYSTEM field
              filtered = [p for p in patterns if p.get("system") == preferred_system.lower()]
              if filtered:
                  patterns = filtered
+                 logger.info(f"   ✅ Using patterns from preferred system: {preferred_system}")
              else:
-                 logger.warning(f"⚠️ No patterns found for system: {preferred_system}")
+                 logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}")
+                 # Fallback logic: try standard if premium was requested and failed
+                 if preferred_system.lower() == "premium":
+                     standard_fallback = [p for p in patterns if p.get("system") == "standard"]
+                     if standard_fallback:
+                         patterns = standard_fallback
+                         logger.info(f"   🔄 Falling back to 'standard' system for category: {category}")
 
         # Rank and return the best one
         best = self.ranker.rank(patterns, 9) # Arbitrary 9 for constitution alignment for now

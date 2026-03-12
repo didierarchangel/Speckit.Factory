@@ -2038,12 +2038,17 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         
         logger.info("🔎 Analyse proactive des dépendances (Dependency Resolver)...")
         
+        # Scan ALL available modules to ensure cross-module dependencies are caught
+        search_dirs = [self.root]
+        for d in ["backend", "frontend", "mobile"]:
+            if (self.root / d).exists():
+                search_dirs.append(self.root / d)
+        
         target_module = state.get("target_module")
         if target_module:
-            search_dirs = [self.root / target_module]
-            logger.info(f"📍 Resolver limité au module : {target_module}")
+            logger.info(f"📍 Resolver (target: {target_module}) - Scanning all modules for safety")
         else:
-            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+            logger.info(f"📍 Resolver scanning all modules")
         
         detected_missing = []
         
