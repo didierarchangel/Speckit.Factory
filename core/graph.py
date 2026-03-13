@@ -123,10 +123,13 @@ class AgentState(TypedDict):
 
 class SpecGraphManager:
     def __init__(self, model, project_root: str = "."):
+        from utils.architecture_guard import ArchitectureGuard
         self.model = model
         self.root = Path(project_root).resolve()
         # Les prompts sont internes au package
         self.prompts_dir = Path(__file__).parent.parent / "agents"
+        
+        self.arch_guard = ArchitectureGuard()
         
         # Initialisation du graphe
         self.graph_builder = StateGraph(AgentState)
@@ -857,55 +860,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             }
 
     def architecture_guard_node(self, state: AgentState) -> dict:
-        """Nœud : Validation architecturale des fichiers générés.
-        
-        Empêche le LLM d'écrire dans un autre dossier (Backend/Frontend).
-        Agit comme une couche de sécurité entre la génération du code et l'écriture sur disque.
-        """
-        import re
-        from utils.architecture_guard import ArchitectureGuard
-        
-        logger.info("🛡️ ArchitectureGuard: Vérification de l'architecture des fichiers...")
-        
-        code = state.get("code_to_verify", "")
-        if not code:
-            return {"arch_guard_status": "EMPTY"}
-            
-        task_module = state.get("target_module", "")
-        
-        # Extraire tous les chemins du code
-        file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
-        file_blocks = re.split(file_pattern, code)
-        
-        paths_to_validate = []
-        if len(file_blocks) > 1:
-            for i in range(1, len(file_blocks), 2):
-                paths_to_validate.append(file_blocks[i].strip())
-                
-        if not paths_to_validate:
-            return {"arch_guard_status": "PASSED"}
-            
-        guard = ArchitectureGuard()
-        try:
-            # valider tous les chemins
-            guard.validate(task_module, paths_to_validate)
-            logger.info("✅ ArchitectureGuard: Tous les chemins sont valides sur le plan architectural.")
-            return {
-                "arch_guard_status": "PASSED",
-                "validation_status": "GENERATED"
-            }
-        except ValueError as e:
-            error_msg = str(e)
-            logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
-            
-            new_error_count = state.get("error_count", 0) + 1
-            return {
-                "arch_guard_status": "FAILED",
-                "validation_status": "REJETÉ",
-                "feedback_correction": f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints.",
-                "error_count": new_error_count,
-                "last_error": error_msg
-            }
+        task_type = state.get("target_module")
+        paths = state.get("impact_fichiers", [])
+
+        self.arch_guard.validate(task_type, paths)
+
+        return state
 
     def path_guard_node(self, state: AgentState) -> dict:
         """Nœud : Garde protectrice pour la normalisation et validation des chemins.
@@ -1055,7 +1015,25 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             "tsconfig.json",
             "vite.config.ts"
         ]
+        
+        REQUIRED_BACKEND_FILES = [
+            "backend/package.json",
+            "backend/src/app.ts"
+        ]
+        
+        REQUIRED_FRONTEND_FILES = [
+            "frontend/package.json",
+            "frontend/src/main.tsx"
+        ]
+        
         required_files.extend(SYSTEM_CONFIG_FILES)
+        
+        # Ajouter les fichiers vitaux selon le module cible
+        target_mod = state.get("target_module", "")
+        if target_mod == "backend":
+            required_files.extend(REQUIRED_BACKEND_FILES)
+        elif target_mod == "frontend":
+            required_files.extend(REQUIRED_FRONTEND_FILES)
         
         missing_files = self._ensure_required_artifacts(required_files, written_paths)
         
