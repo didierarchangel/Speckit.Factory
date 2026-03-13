@@ -21,13 +21,10 @@ dependencies = [
 ]
 
 [project.scripts]
-speckit = "speckit_cli:cli"
+speckit = "core.cli:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "utils", "agents", "protocols"]
-include = [
-    "speckit_cli.py",
-]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -35,6 +32,5 @@ include = [
     "/utils",
     "/agents",
     "/protocols",
-    "/speckit_cli.py",
     "/pyproject.toml",
 ]
