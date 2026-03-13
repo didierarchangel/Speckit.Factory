@@ -1,0 +1,117 @@
+# ==============================================================================
+# SUBAGENT ESM IMPORT RESOLVER
+# ==============================================================================
+# Rôle : Résolution automatique des imports ESM TypeScript en mode post-génération
+#
+# Ce subagent analyse et corrige tous les imports relatifs TypeScript pour
+# assurer la compatibilité ESM (ajout automatique de .js à la fin des imports).
+# ==============================================================================
+
+# CONTEXTE ESM
+
+Si le projet utilise Node.js ESM (package.json avec "type": "module"), 
+tous les imports locaux doivent OBLIGATOIREMENT se terminer par .js après compilation.
+
+## Erreur courante en ESM (ERR_MODULE_NOT_FOUND)
+
+```
+Cannot find module /project/dist/services/user (looking for /project/dist/services/user.js)
+```
+
+**Cause racine** : L'import TypeScript compilé n'a pas d'extension.
+
+## Solution appliquée par ce subagent
+
+Transformer TOUS les imports relatifs TypeScript :
+
+```typescript
+// ❌ AVANT (génère l'erreur ERR_MODULE_NOT_FOUND en ESM)
+import { getUser } from "../services/user.service"
+import Button from "./Button"
+import config from "../../config"
+
+// ✅ APRÈS (fonctionne en ESM)
+import { getUser } from "../services/user.service.js"
+import Button from "./Button.js"
+import config from "../../config.js"
+```
+
+# RÈGLES DE SCAN
+
+1. Fichiers à scanner : `.ts`, `.tsx`, `.js`, `.jsx` dans `backend/src/` et `frontend/src/`
+2. Imports à corriger : ceux qui commencent par `./` ou `../` (imports relatifs)
+3. Extensions à ignorer : `.json`, `.css`, `.svg`, etc. (garder en l'état)
+4. Imports externes : ne pas modifier les imports npm ou absolus
+
+# FORMAT D'ANALYSE
+
+Pour chaque fichier TypeScript trouvé, tu dois :
+
+1. **Identifier les imports non-résolus** :
+   - Imports sans extension (.ts/.js)
+   - Chemins relatifs (./  ou ../)
+
+2. **Appliquer la correction** :
+   - Ajouter `.js` à la fin du chemin
+   - Préserver le reste de la ligne
+
+3. **Valider la correction** :
+   - Vérifier que le fichier cible existe (si visible)
+   - Vérifier que l'extension .js a été ajoutée
+
+4. **Générer le rapport** :
+   - Nombre de fichiers traités
+   - Nombre d'imports corrigés
+   - Liste des fichiers modifiés
+
+# TÂCHE À RÉALISER
+
+Analyse et répare tous les imports ESM du projet.
+
+Utilise la structure fournie dans {file_tree} pour comprendre l'arborescence.
+
+Applique le resolver sur tous les fichiers de code source :
+- backend/src/**/*.ts
+- backend/src/**/*.tsx
+- frontend/src/**/*.ts
+- frontend/src/**/*.tsx
+
+# FORMAT DE RÉPONSE
+
+Fournis une réponse JSON structurée :
+
+```json
+{
+  "fichiers_scannes": 45,
+  "fichiers_modifies": 8,
+  "imports_corriges": 24,
+  "statistiques": {
+    "backend/src/services/user.service.ts": 3,
+    "backend/src/routes/auth.routes.ts": 2,
+    "frontend/src/components/Button.tsx": 5
+  },
+  "rapport": "✅ ESM Import Resolver appliqué avec succès. 24 imports corrigés dans 8 fichiers."
+}
+```
+
+Suivi de la liste des fichiers corrigés avec leurs changements en bloc markdown.
+
+Exemple de fichier modifié :
+
+```file:backend/src/services/user.service.ts
+// Ancien
+import { validateUser } from "../validators/user"
+import Schema from "../../config"
+
+// Nouveau
+import { validateUser } from "../validators/user.js"
+import Schema from "../../config.js"
+```
+
+# REMARQUES IMPORTANTES
+
+- Ne pas modifier les imports npm (ex: `import express from "express"`)
+- Ne pas modifier les imports absolus (ex: `import x from "@/services"`)
+- Ne pas modifier les fichiers config/manifest (package.json, tsconfig, etc.)
+- Si le fichier n'a pas d'imports à corriger, ne pas le lister
+- La correction doit être idempotente (appliquer plusieurs fois = même résultat)

@@ -68,6 +68,68 @@ Si tu es à l'étape Setup ou Structure d'un projet Vite, tu DOIS obligatoiremen
 3. `frontend/src/index.css` (avec directives @tailwind)
 4. `frontend/src/main.tsx` (ou main.ts/main.js)
 
+# ESM IMPORT RULES (Node.js ESM Mode)
+
+⚠️ **CRITIQUE : Si package.json a `"type": "module"`, voici les règles absolues** :
+
+## Règle 1 : Extensions obligatoires sur imports relatifs
+
+TOUS les imports locaux TypeScript DOIVENT se terminer par `.js` après compilation.
+
+```typescript
+// ✅ CORRECT (en ESM)
+import { getUser } from "../services/user.service.js"
+import Button from "./Button.js"
+import config from "../../config.js"
+
+// ❌ INCORRECT (génère ERR_MODULE_NOT_FOUND en ESM)
+import { getUser } from "../services/user.service"
+import Button from "./Button"
+import config from "../../config"
+```
+
+## Règle 2 : Formats d'imports acceptés
+
+```typescript
+// Imports relatifs avec ./
+import x from "./file.js"
+import y from "./subfolder/module.js"
+
+// Imports relatifs avec ../
+import z from "../services/user.service.js"
+
+// Imports npm (sans .js)
+import express from "express"
+import { z } from "zod"
+
+// Imports absolus avec @ (sans .js)
+import Button from "@/components/Button"
+```
+
+## Règle 3 : Cas spéciaux à ignorer
+
+- Imports npm (express, zod, etc.) → SANS .js
+- Imports absolus (@/...) → SANS .js
+- Fichiers .json, .css, .svg → Laisser en l'état
+- Dynamic imports → AVEC .js si relatif
+
+## Règle 4 : Durant l'implémentation
+
+Quand tu génères du code TypeScript pour un projet ESM :
+- Ajoute systématiquement `.js` à tous les imports locaux
+- Ne modifie jamais les imports npm
+- En cas de doute, demande-toi "Est-ce un chemin relatif?" → OUI → ajoute .js
+
+**Exemple d'implémentation correcte** :
+
+```typescript
+// ✅ Généré avec règles ESM respectées
+import { UserService } from "../services/user.service.js"
+import { Request, Response } from "express"  // npm - pas de .js
+import config from "../../config.js"
+import Button from "@/components/Button"      // absolu - pas de .js
+```
+
 # MODE PATCH (Activé automatiquement sur correction)
 
 Si tu reçois {existing_code_snapshot}, tu es en MODE PATCH.

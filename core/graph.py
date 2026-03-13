@@ -1085,7 +1085,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             "file_diff": file_diff
         }
 
-    def esm_compatibility_node(self, state: AgentState) -> dict:
+    def scaffold_node(self, state: AgentState) -> dict:
         """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés.
         
         Remplace automatiquement :
@@ -1234,6 +1234,92 @@ export const getDirname = (metaUrl: string) => {
             "esm_status": status,
             "impact_fichiers": written_paths
         }
+
+    def esm_import_resolver_node(self, state: AgentState) -> dict:
+        """Nœud : Applique le resolver ESM automatique pour ajouter les extensions .js aux imports.
+        
+        Pipeline ESM Post-Génération:
+        1. esm_compatibility_node: Remplace __dirname, ajoute node: prefix
+        2. esm_import_resolver_node (CE NŒUD): Ajoute .js aux imports relatifs
+        3. dependency_resolver_node: Valide les dépendances
+        
+        Ce nœud utilise le resolver ESMImportResolver pour scanner tous les fichiers
+        et ajouter automatiquement l'extension .js aux imports relatifs TypeScript.
+        """
+        from utils.esm_import_resolver import ESMImportResolver, apply_esm_import_resolver
+        import json
+        from pathlib import Path
+        
+        logger.info("📦 ESM Import Resolver: Ajout des extensions .js aux imports relatifs...")
+        
+        try:
+            # Vérifier si le projet est en ESM mode
+            pkg_path = self.root / "package.json"
+            is_esm = False
+            
+            if pkg_path.exists():
+                try:
+                    pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                    is_esm = pkg_data.get("type") == "module"
+                except:
+                    pass
+            
+            if not is_esm:
+                logger.info("ℹ️ Projet non en ESM mode (type != module). Skipping ESM import resolver.")
+                return {
+                    "esm_resolver_status": "SKIPPED",
+                    "esm_resolver_reason": "Non-ESM project"
+                }
+            
+            logger.info("🔍 Mode ESM détecté. Scanning et résolution des imports...")
+            
+            # Appliquer le resolver sur les répertoires standards
+            target_dirs = ["backend/src", "frontend/src"]
+            stats = apply_esm_import_resolver(self.root, target_dirs)
+            
+            # Générer le rapport
+            successful = {k: v for k, v in stats.items() if v > 0}
+            errors = {k: v for k, v in stats.items() if v < 0}
+            
+            report = []
+            report.append("📋 ESM Import Resolver Report")
+            report.append("━" * 50)
+            
+            if successful:
+                total_fixes = sum(v for v in successful.values() if v > 0)
+                report.append(f"✅ Successfully fixed: {len(successful)} files")
+                report.append(f"   Total import extensions added: {total_fixes}")
+                for file_path, count in list(successful.items())[:5]:  # Show first 5
+                    file_name = Path(file_path).name
+                    report.append(f"   - {file_name} (+{count} .js)")
+                if len(successful) > 5:
+                    report.append(f"   ... and {len(successful) - 5} more files")
+            
+            if errors:
+                report.append(f"❌ Errors in: {len(errors)} files")
+            
+            if not successful and not errors:
+                report.append("ℹ️ No ESM import fixes needed.")
+            
+            report_str = "\n".join(report)
+            logger.info(report_str)
+            
+            return {
+                "esm_resolver_status": "COMPLETED",
+                "esm_resolver_report": report_str,
+                "esm_resolver_stats": stats,
+                "impact_fichiers": state.get("impact_fichiers", [])
+            }
+            
+        except Exception as e:
+            error_msg = f"Error in ESM Import Resolver: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "esm_resolver_status": "ERROR",
+                "esm_resolver_error": error_msg,
+                "feedback_correction": f"ESM Import Resolver failed: {str(e)}. This won't block the build but may cause runtime errors.",
+                "impact_fichiers": state.get("impact_fichiers", [])
+            }
 
     def scaffold_node(self, state: AgentState) -> dict:
         """Nœud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protégeant contre les hallucinations vides du LLM."""
@@ -2896,6 +2982,7 @@ export const getDirname = (metaUrl: string) => {
         self.graph_builder.add_node("architecture_guard_node", self.architecture_guard_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
         self.graph_builder.add_node("esm_compatibility_node", self.esm_compatibility_node)
+        self.graph_builder.add_node("esm_import_resolver_node", self.esm_import_resolver_node)
         self.graph_builder.add_node("dependency_resolver_node", self.dependency_resolver_node)
         self.graph_builder.add_node("validate_dependency_node", self.validate_dependency_node)
         self.graph_builder.add_node("install_deps_node", self.install_deps_node)
@@ -2914,7 +3001,8 @@ export const getDirname = (metaUrl: string) => {
         self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})
         
         self.graph_builder.add_edge("persist_node", "esm_compatibility_node")
-        self.graph_builder.add_edge("esm_compatibility_node", "dependency_resolver_node")
+        self.graph_builder.add_edge("esm_compatibility_node", "esm_import_resolver_node")
+        self.graph_builder.add_edge("esm_import_resolver_node", "dependency_resolver_node")
         self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
         self.graph_builder.add_edge("validate_dependency_node", "install_deps_node")
         
