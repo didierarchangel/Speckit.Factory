@@ -856,6 +856,57 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 "last_error": error_msg
             }
 
+    def architecture_guard_node(self, state: AgentState) -> dict:
+        """Nœud : Validation architecturale des fichiers générés.
+        
+        Empêche le LLM d'écrire dans un autre dossier (Backend/Frontend).
+        Agit comme une couche de sécurité entre la génération du code et l'écriture sur disque.
+        """
+        import re
+        from utils.architecture_guard import ArchitectureGuard
+        
+        logger.info("🛡️ ArchitectureGuard: Vérification de l'architecture des fichiers...")
+        
+        code = state.get("code_to_verify", "")
+        if not code:
+            return {"arch_guard_status": "EMPTY"}
+            
+        task_module = state.get("target_module", "")
+        
+        # Extraire tous les chemins du code
+        file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        file_blocks = re.split(file_pattern, code)
+        
+        paths_to_validate = []
+        if len(file_blocks) > 1:
+            for i in range(1, len(file_blocks), 2):
+                paths_to_validate.append(file_blocks[i].strip())
+                
+        if not paths_to_validate:
+            return {"arch_guard_status": "PASSED"}
+            
+        guard = ArchitectureGuard()
+        try:
+            # valider tous les chemins
+            guard.validate(task_module, paths_to_validate)
+            logger.info("✅ ArchitectureGuard: Tous les chemins sont valides sur le plan architectural.")
+            return {
+                "arch_guard_status": "PASSED",
+                "validation_status": "GENERATED"
+            }
+        except ValueError as e:
+            error_msg = str(e)
+            logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
+            
+            new_error_count = state.get("error_count", 0) + 1
+            return {
+                "arch_guard_status": "FAILED",
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints.",
+                "error_count": new_error_count,
+                "last_error": error_msg
+            }
+
     def path_guard_node(self, state: AgentState) -> dict:
         """Nœud : Garde protectrice pour la normalisation et validation des chemins.
         
@@ -1029,6 +1080,132 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             "file_diff": file_diff
         }
 
+    def esm_compatibility_node(self, state: AgentState) -> dict:
+        """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés.
+        
+        Remplace automatiquement :
+        - `__dirname` par l'utilitaire ESM `getDirname(import.meta.url)`
+        - Ajoute les imports manquants pour `getDirname`
+        - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+        """
+        import re
+        from pathlib import Path
+        
+        logger.info("🔄 Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+        
+        written_paths = state.get("impact_fichiers", [])
+        if not written_paths:
+            return {"esm_status": "SKIPPED"}
+            
+        fixed_files = []
+        
+        # S'assurer que src/utils/dirname.util.ts existe côté backend
+        backend_utils_dir = self.root / "backend" / "src" / "utils"
+        dirname_util_path = backend_utils_dir / "dirname.util.ts"
+        
+        dirname_util_content = '''import { fileURLToPath } from "url";
+import path from "node:path";
+
+/**
+ * Utilitaire ESM pour remplacer __dirname et __filename.
+ * @param metaUrl - Passer `import.meta.url` depuis le fichier appelant
+ */
+export const getDirname = (metaUrl: string) => {
+  const __filename = fileURLToPath(metaUrl);
+  return path.dirname(__filename);
+};
+'''
+        
+        # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+        NODE_BUILTINS = [
+            "path", "fs", "url", "crypto", "child_process", "os", "http", 
+            "https", "stream", "util", "events", "assert"
+        ]
+        
+        created_util = False
+        
+        for p in written_paths:
+            # Ne traiter que les fichiers backend internes en .ts/.js
+            if not p.startswith("backend/src/") or not p.endswith((".ts", ".js")):
+                continue
+                
+            full_path = self.root / p
+            if not full_path.exists():
+                continue
+                
+            content = full_path.read_text(encoding="utf-8")
+            original_content = content
+            
+            # 1. Remplacement de __dirname
+            if "__dirname" in content and "getDirname" not in content and "fileURLToPath" not in content:
+                # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+                if not dirname_util_path.exists() and not created_util:
+                    backend_utils_dir.mkdir(parents=True, exist_ok=True)
+                    dirname_util_path.write_text(dirname_util_content, encoding="utf-8")
+                    logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+                    created_util = True
+                
+                # Calculer le chemin relatif vers utils depuis ce fichier
+                parts_len = len(p.split("/")) - 1 # nb de dossiers profonds
+                rel_up = "../" * (parts_len - 2) if parts_len > 2 else "./" # -2 for backend/src
+                
+                # S'assurer que rel_up est correct
+                import os
+                rel_path_to_utils = os.path.relpath("backend/src/utils/dirname.util", os.path.dirname(p)).replace('\\', '/')
+                if not rel_path_to_utils.startswith('.'):
+                    rel_path_to_utils = './' + rel_path_to_utils
+                
+                # Injecter l'import
+                import_stmt = f'import {{ getDirname }} from "{rel_path_to_utils}";\n'
+                
+                # Insérer l'import après les imports existants, ou au début
+                import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
+                if import_match:
+                    last_import_end = import_match[-1].end()
+                    content = content[:last_import_end] + "\n" + import_stmt + content[last_import_end:]
+                else:
+                    content = import_stmt + "\n" + content
+                
+                # Injecter la déclaration __dirname
+                dirname_decl = '\nconst __dirname = getDirname(import.meta.url);\n'
+                
+                # On insère juste après les imports
+                import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
+                if import_match:
+                    last_import_end = import_match[-1].end()
+                    content = content[:last_import_end] + dirname_decl + content[last_import_end:]
+                else:
+                    content = dirname_decl + content
+            
+            # 2. Patch des imports natifs Node pour ajouter "node:"
+            for builtin in NODE_BUILTINS:
+                # Match `import path from 'path'` ou `import { join } from 'path'`
+                pattern1 = rf"import\s+(.*?)\s+from\s+['\"]({builtin})['\"]"
+                content = re.sub(pattern1, rf"import \1 from 'node:\2'", content)
+                
+                # Match `import * as fs from 'fs'` 
+                pattern2 = rf"import\s+\*\s+as\s+(\w+)\s+from\s+['\"]({builtin})['\"]"
+                content = re.sub(pattern2, rf"import * as \1 from 'node:\2'", content)
+            
+            # Si le contenu a été modifié, sauvegarder
+            if content != original_content:
+                full_path.write_text(content, encoding="utf-8")
+                fixed_files.append(p)
+                logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+        
+        # Ajouter le fichier utilitaire à la liste s'il a été créé
+        if created_util and "backend/src/utils/dirname.util.ts" not in written_paths:
+            written_paths.append("backend/src/utils/dirname.util.ts")
+            state["impact_fichiers"] = written_paths
+            
+        status = "FIXED" if fixed_files else "NO_CHANGES"
+        logger.info(f"✅ ESM Compatibility: {status} ({len(fixed_files)} files modified)")
+        
+        return {
+            "esm_status": status,
+            "impact_fichiers": state["impact_fichiers"]
+        }
+
     def typescript_validate_node(self, state: AgentState) -> dict:
         """Nœud : Validation TypeScript des fichiers générés (phase post-persist).
         
@@ -1172,14 +1349,42 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                     scanner = SemanticScanner(str(target_dir))
                     missing_dependencies = scanner.detect_missing_dependencies()
                     
-                    if not missing_dependencies:
-                        logger.info(f"✅ {target_dir.name}: Toutes les dépendances sont déclarées.")
-                        continue
+                    # 🔴 Liste officielle des Built-ins Node.js
+                    NODE_BUILTINS = {
+                        "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+                        "constants", "crypto", "dgram", "dns", "domain", "events", "fs", "fs/promises",
+                        "http", "http2", "https", "inspector", "module", "net", "os", "path", "path/posix",
+                        "path/win32", "perf_hooks", "process", "punycode", "querystring", "readline",
+                        "readline/promises", "repl", "stream", "stream/consumers", "stream/promises",
+                        "stream/web", "string_decoder", "timers", "timers/promises", "tls", "trace_events",
+                        "tty", "url", "util", "util/types", "v8", "vm", "wasi", "worker_threads", "zlib"
+                    }
                     
-                    # Ajouter les dépendances manquantes à package.json
                     pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
                     
+                    # 🧹 1. Nettoyer les dépendances actuelles (au cas où le LLM les aurait générées)
+                    cleaned_builtins = []
+                    for section in ["dependencies", "devDependencies"]:
+                        if section in pkg_data:
+                            original_keys = list(pkg_data[section].keys())
+                            for k in original_keys:
+                                if k in NODE_BUILTINS or k.startswith("node:"):
+                                    del pkg_data[section][k]
+                                    cleaned_builtins.append(k)
+                    
+                    if cleaned_builtins:
+                        logger.info(f"🧹 Nettoyé {len(cleaned_builtins)} Node built-ins de package.json : {', '.join(cleaned_builtins)}")
+                        fixed_issues.extend([f"Removed builtin {k}" for k in cleaned_builtins])
+                    
+                    if not missing_dependencies and not cleaned_builtins:
+                        logger.info(f"✅ {target_dir.name}: Toutes les dépendances sont déclarées et propres.")
+                        continue
+                    
+                    # ➕ 2. Ajouter les NOUVELLES dépendances manquantes (filtrées)
                     for pkg in missing_dependencies:
+                        if pkg in NODE_BUILTINS or pkg.startswith("node:"):
+                            continue
+                            
                         # Déterminer si c'est une dev dependency
                         is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest", "@testing-library"])
                         section = "devDependencies" if is_dev else "dependencies"
@@ -2408,13 +2613,36 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         
         logger.warning(f"⏮️ AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
         return "impl_node"
+        
+    def route_after_impl(self, state: AgentState) -> str:
+        """Détermine la route après l'implémentation (génération brute)."""
+        validation_status = state.get("validation_status", "")
+        if validation_status == "REJETÉ":
+            # Si le LLM a fait une erreur stupide (JSON invalide, etc.)
+            logger.warning("🔨 Échec de génération (impl_node), retour à impl_node...")
+            return "impl_node"
+        
+        # Si la génération a réussi, on procède à l'ArchitectureGuard
+        return "architecture_guard_node"
+
+    def route_after_arch_guard(self, state: AgentState) -> str:
+        """Détermine la route après l'ArchitectureGuard."""
+        status = state.get("arch_guard_status")
+        if status == "FAILED":
+            logger.warning("🔨 Échec de validation architecturale, retour à impl_node...")
+            return "impl_node"
+            
+        # Si la validation architecturale réussit, on passe au PathGuard, qui est directement chaîné (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.
+        return "persist_node"
 
     def _build_graph(self):
         self.graph_builder.add_node("analysis_node", self.analysis_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
         self.graph_builder.add_node("impl_node", self.impl_node)
+        self.graph_builder.add_node("architecture_guard_node", self.architecture_guard_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
+        self.graph_builder.add_node("esm_compatibility_node", self.esm_compatibility_node)
         self.graph_builder.add_node("dependency_resolver_node", self.dependency_resolver_node)
         self.graph_builder.add_node("validate_dependency_node", self.validate_dependency_node)
         self.graph_builder.add_node("install_deps_node", self.install_deps_node)
@@ -2428,9 +2656,11 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         
-        self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"})
+        self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node"})
+        self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})
         
-        self.graph_builder.add_edge("persist_node", "dependency_resolver_node")
+        self.graph_builder.add_edge("persist_node", "esm_compatibility_node")
+        self.graph_builder.add_edge("esm_compatibility_node", "dependency_resolver_node")
         self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
         self.graph_builder.add_edge("validate_dependency_node", "install_deps_node")
         
