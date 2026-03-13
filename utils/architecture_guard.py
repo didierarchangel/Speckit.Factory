@@ -13,7 +13,12 @@ class ArchitectureGuard:
         "backend/package.json",
         "backend/tsconfig.json",
         "backend/.eslintrc.json",
-        "backend/.prettierrc.json"
+        "backend/.eslintrc.js",
+        "backend/.prettierrc.json",
+        "backend/.prettierrc.js",
+        "backend/.env",
+        "backend/.env.example",
+        "backend/nodemon.json"
     ]
 
     FRONTEND_ALLOWED = [
@@ -26,7 +31,11 @@ class ArchitectureGuard:
         "frontend/postcss.config.js",
         "frontend/index.html",
         "frontend/.eslintrc.json",
-        "frontend/.prettierrc.json"
+        "frontend/.eslintrc.js",
+        "frontend/.prettierrc.json",
+        "frontend/.prettierrc.js",
+        "frontend/.env",
+        "frontend/.env.example"
     ]
 
     def validate(self, task_type: str, file_paths: list[str]) -> list[str]:
