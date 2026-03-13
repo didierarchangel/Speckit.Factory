@@ -1851,7 +1851,7 @@ export const getDirname = (metaUrl: string) => {
             
             if not ts_files: return True, ""
             
-            cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "commonjs"] + ts_files
+            cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext"] + ts_files
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
                 if res.returncode == 0: return True, ""

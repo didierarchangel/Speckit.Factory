@@ -524,7 +524,8 @@ Si tu dois créer ou corriger un fichier `tsconfig.json` (uniquement sur ordre e
 {{
   "compilerOptions": {{
     "target": "ES2022",
-    "module": "CommonJS",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
