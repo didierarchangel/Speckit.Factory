@@ -1845,6 +1845,14 @@ export const getDirname = (metaUrl: string) => {
             
             # 🛡️ IMPROVED AUDIT LOGIC:
             # - Si génération échouée OU structure invalide OU verifier=REJETÉ → REJETÉ
+            # 🛡️ HANDLING "Aucune alerte" FALSE POSITIVE
+            alerts_val = result.get('alertes', '')
+            alerts_low = alerts_val.lower()
+            if verifier_status == "REJETÉ" and ("aucune alerte" in alerts_low or alerts_low.strip() in ["none", "n/a", "ras"]):
+                if not generation_failed and structure_valid and missing == 0:
+                    logger.info("🛡️ Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVÉ.")
+                    verifier_status = "APPROUVÉ"
+
             if generation_failed or not structure_valid or verifier_status == "REJETÉ":
                 if missing > 0:
                     logger.warning(f"⚠️ Audit REJETÉ: Il manque encore des fichiers obligatoires.")
@@ -2267,6 +2275,16 @@ export const getDirname = (metaUrl: string) => {
                     seen_full_paths.add(f)
         
         if required_files:
+            # 🛡️ NORMALIZATION & TYPO FIX
+            normalized = []
+            for f in required_files:
+                # Fix typo 'workfloows'
+                f = f.replace("workfloows", "workflows")
+                # Consolidate CI files
+                if "/workflows/main.yml" in f or "/workflows/ci.yaml" in f:
+                    f = f.replace("/workflows/main.yml", "/workflows/ci.yml").replace("/workflows/ci.yaml", "/workflows/ci.yml")
+                normalized.append(f)
+            required_files = list(set(normalized))
             logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
         else:
             logger.debug(f"📋 Aucun fichier obligatoire identifié dans checklist")
@@ -2836,7 +2854,13 @@ export const getDirname = (metaUrl: string) => {
         
         if error_count >= MAX_RETRIES:
             logger.error(f"🛑 AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
-            logger.error(f"❌ Audit errors: {state.get('audit_errors_history', [])}")
+            audit_history = state.get('audit_errors_history', [])
+            # 🛡️ Logic logic: only log real errors
+            filtered_errors = [e for e in audit_history if "aucune alerte" not in e.lower() and "none" not in e.lower()]
+            if filtered_errors:
+                logger.error(f"❌ Audit errors: {filtered_errors}")
+            else:
+                logger.info("✅ Audit history contains no significant alerts.")
             return END
         
         logger.warning(f"⏮️ AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")

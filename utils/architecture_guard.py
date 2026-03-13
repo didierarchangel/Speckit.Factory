@@ -54,6 +54,20 @@ class ArchitectureGuard:
         "frontend/jest.setup.js"
     ]
 
+    GLOBAL_PATHS = [
+        ".github/",
+        ".git/",
+        ".vscode/",
+        ".idea/",
+        "scripts/",
+        "docs/",
+        ".env.example",
+        "README.md",
+        "docker-compose.yml",
+        ".gitignore",
+        "package.json" # Root package.json
+    ]
+
     def validate(self, task_type: str, file_paths: list[str]) -> list[str]:
         """
         Vérifie la validité architecturale des chemins générés.
@@ -66,6 +80,17 @@ class ArchitectureGuard:
             # Nettoyage du chemin
             path = path.replace("\\", "/")
             
+            # 🛡️ GLOBAL FILES : Fichiers système autorisés partout à la racine
+            is_global = False
+            for p in self.GLOBAL_PATHS:
+                if path.startswith(p) or path == p.rstrip("/"):
+                    is_global = True
+                    break
+            
+            if is_global:
+                validated.append(path)
+                continue
+
             # Détection automatique du type de tâche si non spécifié ou générique
             current_type = task_type
             if not current_type or current_type not in ["backend", "frontend"]:
