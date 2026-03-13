@@ -8,7 +8,7 @@ from typing import TypedDict, List
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput, SubagentTaskEnforcerOutput
@@ -95,6 +95,7 @@ class AgentState(TypedDict):
     error_count: int 
     last_error: str
     audit_errors_history: List[str]  # 🛡️ Historique des erreurs d'audit pour détecter les répétitions
+    retry_count: int  # 🛡️ Track impl_node retries to prevent infinite loops
     
     # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
     user_instruction: str
@@ -477,8 +478,15 @@ class SpecGraphManager:
         parser = JsonOutputParser(pydantic_object=SubagentAnalysisOutput)
         
         # Injection des instructions Pydantic dans le prompt
-        prompt_text += "\n\n{format_instructions}"
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        prompt_text += "\n\n{{ format_instructions }}"
+        prompt = PromptTemplate(
+            template=prompt_text,
+            input_variables=[
+                "constitution_content", "current_step", "completed_tasks_summary",
+                "pending_tasks", "target_task", "user_instruction", "format_instructions"
+            ],
+            template_format="jinja2"
+        )
         
         chain = prompt | self.model | StrOutputParser()
         
@@ -764,14 +772,24 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         if is_patch_mode:
             logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
             existing_snapshot = self._read_existing_code()
-            prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
-            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
+            prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{{ feedback_correction }}"
+            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{{ existing_code_snapshot }}"
             prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
         
         parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
-        prompt_text += "\n\n{format_instructions}"
+        prompt_text += "\n\n{{ format_instructions }}"
         
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        prompt = PromptTemplate(
+            template=prompt_text,
+            input_variables=[
+                "constitution_hash", "constitution_content", "current_step",
+                "completed_tasks_summary", "pending_tasks", "target_task", "analysis_output",
+                "feedback_correction", "terminal_diagnostics", "code_map", "file_tree",
+                "design_spec", "subtask_checklist", "user_instruction", 
+                "existing_code_snapshot", "format_instructions"
+            ],
+            template_format="jinja2"
+        )
         chain = prompt | self.model | StrOutputParser()
         
         try:
@@ -853,10 +871,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             error_msg = f"Erreur de génération : {str(e)}"
             logger.error(f"❌ {error_msg}")
             new_error_count = state.get("error_count", 0) + 1
+            new_retry_count = state.get("retry_count", 0) + 1
             return {
                 "validation_status": "REJETÉ",
                 "feedback_correction": f"Technical error during generation: {str(e)}. Please retry.",
                 "error_count": new_error_count,
+                "retry_count": new_retry_count,
                 "last_error": error_msg
             }
 
@@ -1967,9 +1987,16 @@ export const getDirname = (metaUrl: string) => {
         
         prompt_text = self._load_prompt("subagent_verify.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentVerifyOutput)
-        prompt_text += "\n\n{format_instructions}"
+        prompt_text += "\n\n{{ format_instructions }}"
         
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        prompt = PromptTemplate(
+            template=prompt_text,
+            input_variables=[
+                "constitution_content", "validation_status", "code_to_verify",
+                "file_tree", "format_instructions"
+            ],
+            template_format="jinja2"
+        )
         chain = prompt | self.model | StrOutputParser()
         
         try:
@@ -2125,9 +2152,16 @@ export const getDirname = (metaUrl: string) => {
         logger.info("🛡️ Vérification structurelle (TaskEnforcer)...")
         prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
-        prompt_text += "\n\n{format_instructions}"
+        prompt_text += "\n\n{{ format_instructions }}"
         
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        prompt = PromptTemplate(
+            template=prompt_text,
+            input_variables=[
+                "constitution_content", "target_task", "file_tree",
+                "code_map", "format_instructions"
+            ],
+            template_format="jinja2"
+        )
         chain = prompt | self.model | StrOutputParser()
         
         try:
@@ -3077,9 +3111,18 @@ export const getDirname = (metaUrl: string) => {
     def route_after_impl(self, state: AgentState) -> str:
         """Détermine la route après l'implémentation (génération brute)."""
         validation_status = state.get("validation_status", "")
+        retry_count = state.get("retry_count", 0)
+        
         if validation_status == "REJETÉ":
+            # 🛡️ RETRY LIMIT : Prevent infinite loops in impl_node
+            if retry_count >= MAX_RETRIES:
+                logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in impl_node. Stopping retries.")
+                logger.error(f"Last error: {state.get('last_error', 'Unknown')}")
+                # Return to audit anyway to show the error
+                return "verify_node"
+            
             # Si le LLM a fait une erreur stupide (JSON invalide, etc.)
-            logger.warning("🔨 Échec de génération (impl_node), retour à impl_node...")
+            logger.warning(f"🔨 Échec de génération (impl_node), retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
             return "impl_node"
         
         # Si la génération a réussi, on procède à l'ArchitectureGuard
@@ -3088,8 +3131,15 @@ export const getDirname = (metaUrl: string) => {
     def route_after_arch_guard(self, state: AgentState) -> str:
         """Détermine la route après l'ArchitectureGuard."""
         status = state.get("arch_guard_status")
+        retry_count = state.get("retry_count", 0)
+        
         if status == "FAILED":
-            logger.warning("🔨 Échec de validation architecturale, retour à impl_node...")
+            # 🛡️ RETRY LIMIT : Prevent infinite loops
+            if retry_count >= MAX_RETRIES:
+                logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in arch_guard. Stopping retries.")
+                return "verify_node"
+            
+            logger.warning(f"🔨 Échec de validation architecturale, retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
             return "impl_node"
             
         # Si la validation architecturale réussit, on passe au PathGuard, qui est directement chaîné (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.

@@ -663,6 +663,7 @@ def run(task, component, provider, model, instruction):
             "feedback_correction": "",
             "terminal_diagnostics": "",
             "error_count": 0,
+            "retry_count": 0,
             "last_error": "",
             "user_instruction": instruction,
             "subtask_checklist": subtask_checklist,
