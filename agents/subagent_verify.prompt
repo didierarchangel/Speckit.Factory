@@ -76,7 +76,10 @@ L'utilisateur a donné cette directive spécifique à l'implémenteur :
 
 L'étape en cours comporte les livrables suivants. Tu DOIS vérifier que CHAQUE sous-tâche a été traitée dans le code soumis.
 Si une sous-tâche mentionne un fichier (ex: `backend/.env`, `backend/.gitignore`), vérifie qu'il est présent dans le code généré.
-Si des sous-tâches critiques sont manquantes (fichiers non générés, structures non créées), tu DOIS REJETER le code et lister les éléments manquants dans `action_corrective`.
+
+**ÉTAT DE LA CHECKLIST : {missing_tasks_count} sous-tâche(s) ou fichier(s) manquant(s) sur un total de {total_tasks_count}.**
+
+Si `missing_tasks_count` est strictement supérieur à 0, tu DOIS ABSOLUMENT REJETER le code et lister les éléments manquants dans `action_corrective` !
 
 Sous-tâches à vérifier :
 {subtask_checklist}

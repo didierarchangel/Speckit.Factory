@@ -863,7 +863,18 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         task_type = state.get("target_module")
         paths = state.get("impact_fichiers", [])
 
-        self.arch_guard.validate(task_type, paths)
+        try:
+            self.arch_guard.validate(task_type, paths)
+            state["arch_guard_status"] = "PASSED"
+        except ValueError as e:
+            error_msg = str(e)
+            logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
+            
+            state["arch_guard_status"] = "FAILED"
+            state["validation_status"] = "REJETÉ"
+            state["feedback_correction"] = f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints."
+            state["error_count"] = state.get("error_count", 0) + 1
+            state["last_error"] = error_msg
 
         return state
 
@@ -1179,10 +1190,75 @@ export const getDirname = (metaUrl: string) => {
         status = "FIXED" if fixed_files else "NO_CHANGES"
         logger.info(f"✅ ESM Compatibility: {status} ({len(fixed_files)} files modified)")
         
-        return {
-            "esm_status": status,
-            "impact_fichiers": state["impact_fichiers"]
-        }
+        state["esm_status"] = status
+        return state
+
+    def scaffold_node(self, state: AgentState) -> dict:
+        """Nœud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protégeant contre les hallucinations vides du LLM."""
+        import os
+        import json
+        
+        logger.info("🏗️ Scaffold Node: Vérification de la structure de base du projet...")
+        
+        target_mod = state.get("target_module", "")
+        
+        # Ce scaffolding n'est fait qu'à l'étape 0-1 de "setup" ou si le dossier est vide
+        # On ne veut pas écraser s'il existe déjà
+        if target_mod == "backend":
+            os.makedirs(str(self.root / "backend/src"), exist_ok=True)
+            
+            pkg_path = self.root / "backend/package.json"
+            if not pkg_path.exists():
+                logger.info("   ↳ Création de backend/package.json")
+                pkg_data = {
+                    "name": "backend",
+                    "version": "1.0.0",
+                    "type": "module",
+                    "main": "dist/app.js",
+                    "scripts": {
+                        "build": "tsc",
+                        "start": "node dist/app.js",
+                        "dev": "ts-node-dev --respawn --transpile-only src/app.ts"
+                    },
+                    "dependencies": {},
+                    "devDependencies": {
+                        "typescript": "^5.0.0",
+                        "@types/node": "^20.0.0"
+                    }
+                }
+                pkg_path.write_text(json.dumps(pkg_data, indent=2), encoding="utf-8")
+                
+            app_path = self.root / "backend/src/app.ts"
+            if not app_path.exists():
+                logger.info("   ↳ Création de backend/src/app.ts")
+                app_path.write_text('console.log("Backend scaffolded");\n', encoding="utf-8")
+                
+        elif target_mod == "frontend":
+            os.makedirs(str(self.root / "frontend/src"), exist_ok=True)
+            
+            pkg_path = self.root / "frontend/package.json"
+            if not pkg_path.exists():
+                logger.info("   ↳ Création de frontend/package.json")
+                pkg_data = {
+                    "name": "frontend",
+                    "version": "1.0.0",
+                    "type": "module",
+                    "scripts": {
+                        "dev": "vite",
+                        "build": "tsc && vite build",
+                        "preview": "vite preview"
+                    },
+                    "dependencies": {},
+                    "devDependencies": {} # Vite handles the rest usually
+                }
+                pkg_path.write_text(json.dumps(pkg_data, indent=2), encoding="utf-8")
+                
+            main_path = self.root / "frontend/src/main.tsx"
+            if not main_path.exists():
+                logger.info("   ↳ Création de frontend/src/main.tsx")
+                main_path.write_text('console.log("Frontend scaffolded");\n', encoding="utf-8")
+                
+        return state
 
     def typescript_validate_node(self, state: AgentState) -> dict:
         """Nœud : Validation TypeScript des fichiers générés (phase post-persist).
@@ -1597,19 +1673,29 @@ export const getDirname = (metaUrl: string) => {
                 }
                                     
             # 🛡️ RETRY avec backoff pour l'audit lui-même
+            
+            total_tasks = state.get("total_subtasks", 1)
+            missing = state.get("missing_tasks", 0)
+            completed = max(0, total_tasks - missing)
+            
+            # Forcer un score strict basé sur la checklist
+            checklist_score = int((completed / max(1, total_tasks)) * 100)
+            
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
                 "pending_tasks": state["pending_tasks"],
+                "subtask_checklist": state["subtask_checklist"],
+                "missing_tasks_count": missing,
+                "total_tasks_count": total_tasks,
                 "analysis_output": state["analysis_output"],
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
-                "user_instruction": state.get("user_instruction", ""),
-                "subtask_checklist": state["subtask_checklist"],
-                "file_tree": state["file_tree"],
                 "code_map": state["code_map"],
+                "file_tree": state["file_tree"],
+                "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             }
             
@@ -1618,19 +1704,31 @@ export const getDirname = (metaUrl: string) => {
             
             verdict = result["verdict_final"].upper()
             verifier_status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
-            final_score = int(result.get("score_conformite", 0))
+            
+            # Le score final est le minimum entre le score IA et le vrai score de checklist
+            llm_score = int(result.get("score_conformite", 100))
+            final_score = min(llm_score, checklist_score)
+            
+            # 🛡️ HARD OVERRIDE: Si des tâches manquent dans la checklist, C'EST REJETÉ
+            if missing > 0:
+                logger.warning(f"⚠️ Audit REJETÉ par système (Checklist incomplète: {missing}/{total_tasks} manquantes). Forçage REJETÉ.")
+                verifier_status = "REJETÉ"
             
             # 🛡️ IMPROVED AUDIT LOGIC:
-            # - Si génération échouée OU structure invalide → REJETÉ
+            # - Si génération échouée OU structure invalide OU verifier=REJETÉ → REJETÉ
             if generation_failed or not structure_valid or verifier_status == "REJETÉ":
-                if generation_failed:
+                if missing > 0:
+                    logger.warning(f"⚠️ Audit REJETÉ: Il manque encore des fichiers obligatoires.")
+                elif generation_failed:
                     logger.warning(f"⚠️ Audit REJETÉ: La génération technique a échoué (TSC errors).")
                 elif not structure_valid:
-                    logger.warning(f"⚠️ Audit REJETÉ: La structure demandée est invalide ou incomplète.")
+                    logger.warning(f"⚠️ Audit REJETÉ: La structure demandée est invalide.")
                 
                 status = "REJETÉ"
                 feedback_msg = result.get('action_corrective', '')
-                if not feedback_msg and generation_failed:
+                if missing > 0:
+                    feedback_msg = f"Checklist incomplete. You missed {missing} task(s)/file(s). You MUST create them: " + state.get("feedback_correction", "")
+                elif not feedback_msg and generation_failed:
                     feedback_msg = "TypeScript validation failed. Please fix the compilation errors in the terminal diagnostics."
             else:
                 status = "APPROUVÉ"
@@ -2615,6 +2713,7 @@ export const getDirname = (metaUrl: string) => {
 
     def _build_graph(self):
         self.graph_builder.add_node("analysis_node", self.analysis_node)
+        self.graph_builder.add_node("scaffold_node", self.scaffold_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
         self.graph_builder.add_node("impl_node", self.impl_node)
@@ -2630,7 +2729,8 @@ export const getDirname = (metaUrl: string) => {
         self.graph_builder.add_node("verify_node", self.verify_node)
 
         self.graph_builder.add_edge(START, "analysis_node")
-        self.graph_builder.add_edge("analysis_node", "code_map_node")
+        self.graph_builder.add_edge("analysis_node", "scaffold_node")
+        self.graph_builder.add_edge("scaffold_node", "code_map_node")
         self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         
