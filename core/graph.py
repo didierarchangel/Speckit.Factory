@@ -1244,10 +1244,27 @@ export const getDirname = (metaUrl: string) => {
                         "start": "node dist/app.js",
                         "dev": "ts-node-dev --respawn --transpile-only src/app.ts"
                     },
-                    "dependencies": {},
+                    "dependencies": {
+                        "express": "latest",
+                        "cors": "latest",
+                        "helmet": "latest",
+                        "morgan": "latest",
+                        "dotenv": "latest",
+                        "zod": "latest",
+                        "jsonwebtoken": "latest",
+                        "bcryptjs": "latest",
+                        "@prisma/client": "latest"
+                    },
                     "devDependencies": {
-                        "typescript": "^5.0.0",
-                        "@types/node": "^20.0.0"
+                        "typescript": "latest",
+                        "@types/node": "latest",
+                        "@types/express": "latest",
+                        "@types/cors": "latest",
+                        "@types/morgan": "latest",
+                        "@types/jsonwebtoken": "latest",
+                        "@types/bcryptjs": "latest",
+                        "ts-node-dev": "latest",
+                        "prisma": "latest"
                     }
                 }
                 pkg_path.write_text(json.dumps(pkg_data, indent=2), encoding="utf-8")
@@ -1272,8 +1289,25 @@ export const getDirname = (metaUrl: string) => {
                         "build": "tsc && vite build",
                         "preview": "vite preview"
                     },
-                    "dependencies": {},
-                    "devDependencies": {} # Vite handles the rest usually
+                    "dependencies": {
+                        "react": "^18.2.0",
+                        "react-dom": "^18.2.0",
+                        "react-router-dom": "^6.14.0",
+                        "axios": "^1.4.0",
+                        "lucide-react": "^0.260.0"
+                    },
+                    "devDependencies": {
+                        "@types/react": "^18.2.0",
+                        "@types/react-dom": "^18.2.0",
+                        "@vitejs/plugin-react": "^4.0.0",
+                        "vite": "^4.4.0",
+                        "typescript": "^5.0.2",
+                        "tailwindcss": "latest",
+                        "postcss": "latest",
+                        "autoprefixer": "latest",
+                        "eslint": "latest",
+                        "prettier": "latest"
+                    }
                 }
                 pkg_path.write_text(json.dumps(pkg_data, indent=2), encoding="utf-8")
                 
