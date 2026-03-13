@@ -756,26 +756,26 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         # Garantie structurelle avant génération
         self._ensure_directory_structure()
         
-        prompt_text = self._load_prompt("subagent_impl.prompt")
-        
         # ─── MODE PATCH : Sur les retries, injecter le code réel du disque ───
         is_patch_mode = bool(state.get("feedback_correction"))
         existing_snapshot = ""
         
-        if is_patch_mode:
-            logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
-            existing_snapshot = self._read_existing_code()
-            prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
-            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
-            prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
-        
-        parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
-        prompt_text += "\n\n{format_instructions}"
-        
-        prompt = ChatPromptTemplate.from_template(prompt_text)
-        chain = prompt | self.model | StrOutputParser()
-        
         try:
+            prompt_text = self._load_prompt("subagent_impl.prompt")
+            
+            if is_patch_mode:
+                logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
+                existing_snapshot = self._read_existing_code()
+                prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
+                prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
+                prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
+            
+            parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
+            prompt_text += "\n\n{format_instructions}"
+            
+            prompt = ChatPromptTemplate.from_template(prompt_text)
+            chain = prompt | self.model | StrOutputParser()
+            
             # 🛡️ FILRAGE DE CONTEXTE : Réduire la taille avant d'envoyer au LLM
             filtered = self._get_filtered_context(state)
             code_map_to_use = filtered.get("code_map_filtered", state.get("code_map", ""))
