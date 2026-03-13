@@ -195,6 +195,14 @@ class EtapeManager:
                 })
         return steps
 
+    def get_progress(self) -> dict:
+        """Retourne un résumé de la progression : total, done, pending, pourcentage."""
+        steps = self.get_all_steps()
+        total = len(steps)
+        done = sum(1 for s in steps if s["status"] == "done")
+        pending = total - done
+        pct = round((done / total) * 100, 1) if total > 0 else 0.0
+
         return {
             "total": total,
             "done": done,
