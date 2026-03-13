@@ -1626,38 +1626,44 @@ export const getDirname = (metaUrl: string) => {
             skipped = set(missing_from_scanner) - set(filtered_missing)
             logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
         
-            # --- Vérification préalable avec npm view ---
-            valid_packages = []
-            for pkg in filtered_missing:
-                try:
-                    view_res = subprocess.run(
-                        [npm_path, "view", pkg, "version"],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    if view_res.returncode == 0:
-                        valid_packages.append(pkg)
-                    else:
-                        logger.warning(f"⚠️ Package {pkg} semble introuvable ou erreur registre. Ignoré.")
-                except Exception as e:
-                    logger.warning(f"⚠️ Erreur npm view pour {pkg}: {e}")
+        # --- Vérification préalable avec npm view ---
+        valid_packages = []
+        for pkg in filtered_missing:
+            try:
+                view_res = subprocess.run(
+                    [npm_path, "view", pkg, "version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if view_res.returncode == 0:
+                    valid_packages.append(pkg)
+                else:
+                    logger.warning(f"⚠️ Package {pkg} semble introuvable ou erreur registre. Ignoré.")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur npm view pour {pkg}: {e}")
 
-            if not valid_packages and not needs_base_install:
-                logger.warning("❌ Aucun package valide à installer.")
+        if not valid_packages and not needs_base_install:
+            logger.warning("❌ Aucun package valide à installer.")
+            state["missing_modules"] = []
+            return state
+
+        if needs_base_install and not valid_packages:
+            logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
+            install_args = [npm_path, "install"]
+        else:
+            logger.warning(f"🚀 Installation de {len(valid_packages)} modules validés: {valid_packages}...")
+            install_args = [npm_path, "install"] + valid_packages
+        
+        # 🛡️ Tracker les tentatives avant d'essayer
+        state["attempted_installs"] = attempted + list(set(filtered_missing))
+        
+        try:
+            if not npm_path:
+                logger.error("❌ npm not found in PATH")
                 state["missing_modules"] = []
                 return state
 
-            if needs_base_install and not valid_packages:
-                logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
-                install_args = [npm_path, "install"]
-            else:
-                logger.warning(f"🚀 Installation de {len(valid_packages)} modules validés: {valid_packages}...")
-                install_args = [npm_path, "install"] + valid_packages
-            
-            # 🛡️ Tracker les tentatives avant d'essayer
-            state["attempted_installs"] = attempted + list(set(filtered_missing))
-            
             result = subprocess.run(
                 install_args,
                 cwd=str(target_dir),
