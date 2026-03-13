@@ -860,12 +860,25 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             }
 
     def architecture_guard_node(self, state: AgentState) -> dict:
+        import re
         task_type = state.get("target_module")
-        paths = state.get("impact_fichiers", [])
+        
+        # 🛡️ SECURITÉ : On extrait les chemins RÉELS des blocs de code
+        # pour éviter que le LLM ne cache un fichier non autorisé en l'omettant de impact_fichiers
+        code = state.get("code_to_verify", "")
+        file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        extracted_paths = re.findall(file_pattern, code)
+        
+        # Fusionner avec impact_fichiers (fallback et complément)
+        paths = list(set(extracted_paths + state.get("impact_fichiers", [])))
 
         try:
-            self.arch_guard.validate(task_type, paths)
+            if paths:
+                logger.info(f"🛡️ ArchitectureGuard: Validating {len(paths)} files before persistence...")
+                self.arch_guard.validate(task_type, paths)
+            
             state["arch_guard_status"] = "PASSED"
+            state["impact_fichiers"] = paths # Mettre à jour avec la liste vérifiée
         except ValueError as e:
             error_msg = str(e)
             logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
@@ -2267,6 +2280,13 @@ export const getDirname = (metaUrl: string) => {
         created_files = []
         
         for required_file in required_files:
+            # 🛡️ FIX: Gérer les fichiers sans extension (ex: user.service -> user.service.ts)
+            if '.' not in required_file.split('/')[-1] and not required_file.endswith('/'):
+                # Déterminer l'extension par défaut
+                if "backend/src" in required_file or "frontend/src" in required_file:
+                    required_file += ".ts"
+                    logger.info(f"🔧 Extension manquante détectée -> Ajouté .ts : {required_file}")
+
             file_path = self.root / required_file
             
             # Vérifier si le fichier existe déjà (sur disque ou écrit par l'IA)
@@ -2651,13 +2671,6 @@ export const getDirname = (metaUrl: string) => {
             "missing_modules": all_missing
         }
 
-    def route_after_impl(self, state: AgentState) -> str:
-        if state["validation_status"] == "REJETÉ":
-            if state.get("error_count", 0) >= MAX_RETRIES:
-                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec Génération.")
-                return "verify_node"
-            return "impl_node"
-        return "persist_node"
 
     def route_from_install_deps(self, state: AgentState) -> str:
         """

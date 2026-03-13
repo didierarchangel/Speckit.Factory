@@ -18,7 +18,13 @@ class ArchitectureGuard:
         "backend/.prettierrc.js",
         "backend/.env",
         "backend/.env.example",
-        "backend/nodemon.json"
+        "backend/nodemon.json",
+        "backend/jest.config.ts",
+        "backend/jest.config.js",
+        "backend/vitest.config.ts",
+        "backend/vitest.config.js",
+        "backend/jest.setup.ts",
+        "backend/jest.setup.js"
     ]
 
     FRONTEND_ALLOWED = [
@@ -35,7 +41,15 @@ class ArchitectureGuard:
         "frontend/.prettierrc.json",
         "frontend/.prettierrc.js",
         "frontend/.env",
-        "frontend/.env.example"
+        "frontend/.env.example",
+        "frontend/jest.config.ts",
+        "frontend/jest.config.js",
+        "frontend/vitest.config.ts",
+        "frontend/vitest.config.js",
+        "frontend/next.config.js",
+        "frontend/next.config.ts",
+        "frontend/jest.setup.ts",
+        "frontend/jest.setup.js"
     ]
 
     def validate(self, task_type: str, file_paths: list[str]) -> list[str]:
@@ -81,14 +95,20 @@ class ArchitectureGuard:
             is_allowed = True
             
         if not is_allowed:
+            allowed_str = "\n".join([f"- {p}" for p in self.BACKEND_ALLOWED])
             raise ValueError(
-                f"ArchitectureGuard: chemin backend invalide (hors dossiers autorisés) → {path}"
+                f"Architecture violation in 'backend' module.\n"
+                f"Invalid path: {path}\n"
+                f"Allowed paths:\n{allowed_str}\n"
+                f"Suggested fix: If it's a source file, move it to backend/src/. If it's a config file, check if it's in the allowlist."
             )
 
         ext = Path(path).suffix
         if ext in {".tsx", ".jsx"}:
             raise ValueError(
-                f"ArchitectureGuard: fichier UI (.tsx/.jsx) détecté dans backend → {path}"
+                f"Architecture violation: UI file (.tsx/.jsx) detected in backend.\n"
+                f"Invalid path: {path}\n"
+                f"Reason: Frontend components are not allowed in the backend module."
             )
 
     def _validate_frontend(self, path: str):
@@ -101,11 +121,10 @@ class ArchitectureGuard:
             is_allowed = True
             
         if not is_allowed:
+            allowed_str = "\n".join([f"- {p}" for p in self.FRONTEND_ALLOWED])
             raise ValueError(
-                f"ArchitectureGuard: chemin frontend invalide (hors dossiers autorisés) → {path}"
+                f"Architecture violation in 'frontend' module.\n"
+                f"Invalid path: {path}\n"
+                f"Allowed paths:\n{allowed_str}\n"
+                f"Suggested fix: Move the file to frontend/src/ or another allowed directory."
             )
-
-        # Les fichiers .ts/.js sont autorisés dans le frontend (ex: utilitaires, services, config)
-        # Mais un fichier backend typique (ex: modèle mongoose, route express) aura été bloqué
-        # par le filtre de répertoire (s'ils essaient d'écrire dans frontend/src/models par exemple)
-        # On peut affiner avec le SemanticScanner plus tard comme suggéré
