@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "speckit-factory"
@@ -20,16 +20,17 @@ dependencies = [
     "langchain-core>=0.1.0",
 ]
 
-[tool.setuptools]
-packages = ["core", "utils", "agents", "protocols"]
-py-modules = ["speckit_cli"]
-include-package-data = true
-
-[tool.setuptools.package-data]
-agents = ["*.prompt"]
-protocols = ["*.md"]
-core = ["templates/**/*"]
-
-
 [project.scripts]
-speckit = "speckit_cli:cli"
+speckit = "core.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "utils", "agents", "protocols"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/core",
+    "/utils",
+    "/agents",
+    "/protocols",
+    "/pyproject.toml",
+]
