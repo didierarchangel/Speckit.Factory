@@ -87,6 +87,10 @@ class ArchitectureGuard:
         return validated
 
     def _validate_backend(self, path: str):
+        # 🛡️ GLOBAL ALLOWLIST : Fichiers système autorisés partout (ex: GitHub Actions)
+        if any(path.startswith(prefix) for prefix in [".github/", ".git/", ".vscode/"]):
+            return
+            
         # Autoriser explicitement la racine du backend pour les fichiers de config
         if path == "backend" or path == "backend/":
             return
@@ -114,6 +118,9 @@ class ArchitectureGuard:
             )
 
     def _validate_frontend(self, path: str):
+        if any(path.startswith(prefix) for prefix in [".github/", ".git/", ".vscode/"]):
+            return
+            
         # Autoriser explicitement la racine du frontend pour les fichiers de config
         if path == "frontend" or path == "frontend/":
             return

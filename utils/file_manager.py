@@ -17,6 +17,7 @@ class FileManager:
         "Constitution/",
         "Speckit/",
         ".git/",
+        ".github/",
         ".env",
         "LICENSE",
         "README",

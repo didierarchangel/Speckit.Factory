@@ -417,12 +417,13 @@ class SpecGraphManager:
 
     def _is_frontend_task(self, task_name: str, checklist: str = "") -> bool:
         """Détecte avec robustesse si une tâche concerne le frontend."""
+        import re
         frontend_keywords = [
-            "frontend/", ".tsx", ".jsx", "react",
-            "component", "tailwind", "page", "ui"
+            r"frontend/", r"\.tsx", r"\.jsx", r"react",
+            r"\bcomponent\b", r"\btailwind\b", r"\bpage\b", r"\bui\b", r"\bcss\b"
         ]
         task_text = f"{task_name}\n{checklist}".lower()
-        return any(k in task_text for k in frontend_keywords)
+        return any(re.search(k, task_text) for k in frontend_keywords)
 
     def GraphicDesign_node(self, state: AgentState) -> dict:
         """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
