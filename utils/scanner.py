@@ -193,12 +193,17 @@ class SemanticScanner:
         # Détection des imports utilisés
         used = self.detect_dependencies()
         
-        # Filtrer les modules disponibles nativement
-        used -= self.NODE_BUILTINS
-        used -= {"react", "react-dom"}  # Souvent pré-installés
+        # Trouver ce qui manque (utilisé mais non déclaré)
+        missing_declaration = [m for m in used if m not in declared]
         
-        # Trouver ce qui manque
-        missing = [m for m in used if m not in declared]
+        # Trouver ce qui est déclaré mais non installé physiquement
+        missing_physical = []
+        for pkg in declared:
+            if pkg in self.NODE_BUILTINS:
+                continue
+            pkg_path = self.root / "node_modules" / pkg
+            if not pkg_path.exists():
+                missing_physical.append(pkg)
         
-        return sorted(missing)
+        return sorted(list(set(missing_declaration + missing_physical)))
 

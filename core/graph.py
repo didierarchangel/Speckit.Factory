@@ -1626,30 +1626,69 @@ export const getDirname = (metaUrl: string) => {
             skipped = set(missing_from_scanner) - set(filtered_missing)
             logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
         
-        # ─── Installer les modules manquants ───
-        if needs_base_install and not filtered_missing:
-            logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
-            install_args = [npm_path, "install"]
-        else:
-            logger.warning(f"🚀 Installation de {len(filtered_missing)} modules: {filtered_missing}...")
-            install_args = [npm_path, "install"] + filtered_missing
-        
-        # 🛡️ Tracker les tentatives avant d'essayer
-        state["attempted_installs"] = attempted + filtered_missing
-        
-        try:
-            if not npm_path:
-                logger.error("❌ npm not found in PATH")
+            # --- Vérification préalable avec npm view ---
+            valid_packages = []
+            for pkg in filtered_missing:
+                try:
+                    view_res = subprocess.run(
+                        [npm_path, "view", pkg, "version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    if view_res.returncode == 0:
+                        valid_packages.append(pkg)
+                    else:
+                        logger.warning(f"⚠️ Package {pkg} semble introuvable ou erreur registre. Ignoré.")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur npm view pour {pkg}: {e}")
+
+            if not valid_packages and not needs_base_install:
+                logger.warning("❌ Aucun package valide à installer.")
                 state["missing_modules"] = []
                 return state
+
+            if needs_base_install and not valid_packages:
+                logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
+                install_args = [npm_path, "install"]
+            else:
+                logger.warning(f"🚀 Installation de {len(valid_packages)} modules validés: {valid_packages}...")
+                install_args = [npm_path, "install"] + valid_packages
             
-            subprocess.run(
+            # 🛡️ Tracker les tentatives avant d'essayer
+            state["attempted_installs"] = attempted + list(set(filtered_missing))
+            
+            result = subprocess.run(
                 install_args,
                 cwd=str(target_dir),
                 capture_output=True,
                 text=True,
                 timeout=180
             )
+
+            if result.returncode != 0:
+                logger.error(f"❌ Échec npm install (code {result.returncode})")
+                if result.stderr:
+                    logger.error(f"   Diagnostic npm: {result.stderr.strip()}")
+            else:
+                logger.info(f"✅ Commande npm install terminée avec succès.")
+                # Vérification post-install physique
+                if valid_packages:
+                    installed_physically = []
+                    for pkg in valid_packages:
+                        # Gérer les scoped packages @foo/bar
+                        pkg_dir = target_dir / "node_modules" / pkg
+                        if pkg_dir.exists():
+                            installed_physically.append(pkg)
+                    
+                    if installed_physically:
+                        logger.info(f"✨ Vérification physique : {len(installed_physically)} modules confirmés dans node_modules.")
+                        installed = state.get("installed_modules", [])
+                        installed.extend(installed_physically)
+                        state["installed_modules"] = installed
+                    else:
+                        logger.warning("⚠️ npm install a réussi mais node_modules semble vide ou incomplet.")
+
             logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
             
             # ─── 🛡️ Effacer missing_modules APRÈS installation ───
