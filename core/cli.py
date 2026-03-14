@@ -385,13 +385,14 @@ def init(path, here):
         click.echo("\n🌐 Sélection du modèle OpenRouter :")
 
         openrouter_models = {
-            "1": ("DeepSeek R1 (Free)", "deepseek/deepseek-r1:free"),
-            "2": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
-            "3": ("Claude 3.5 Sonnet", "anthropic/claude-3.5-sonnet"),
-            "4": ("Grok 2", "x-ai/grok-2"),
-            "5": ("Llama 3 70B", "meta-llama/llama-3-70b-instruct"),
-            "6": ("Mixtral 8x7B", "mistralai/mixtral-8x7b")
-        }
+        "1": ("DeepSeek R1 (Free)", "deepseek/deepseek-r1:free"),
+        "2": ("DeepSeek R1 (Full)", "deepseek/deepseek-r1"),
+        "3": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
+        "4": ("Claude 3.5 Sonnet", "anthropic/claude-3.5-sonnet"),
+        "5": ("Grok 2", "x-ai/grok-2"),
+        "6": ("Llama 3 70B", "meta-llama/llama-3-70b-instruct"),
+        "7": ("Mixtral 8x7B", "mistralai/mixtral-8x7b")
+    }
 
         for key, (name, _) in openrouter_models.items():
             click.echo(f" {key}) {name}")
