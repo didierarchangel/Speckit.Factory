@@ -3,12 +3,12 @@
 # Ce module orchestre l'interaction entre les sous-agents (Analyse, Implémentation, Vérification)
 
 import logging
+import time
 from pathlib import Path
 from typing import TypedDict, List
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput, SubagentTaskEnforcerOutput
@@ -477,7 +477,7 @@ class SpecGraphManager:
         # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
         parser = JsonOutputParser(pydantic_object=SubagentAnalysisOutput)
         
-        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
         inject_dict = {
             "constitution_content": state["constitution_content"],
             "current_step": state["current_step"],
@@ -488,19 +488,34 @@ class SpecGraphManager:
             "format_instructions": parser.get_format_instructions()
         }
         
-        # Replace placeholders safely without template parsing
+        # Replace placeholders directly
         for key, value in inject_dict.items():
             placeholder = "{" + key + "}"
             prompt_text = prompt_text.replace(placeholder, str(value))
         
-        prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
-        chain = prompt | self.model | StrOutputParser()
-        
         try:
             import concurrent.futures
+            from langchain_core.messages import HumanMessage
             
             def run_chain():
-                return self._invoke_with_retry(chain, {}, max_attempts=3)
+                final_prompt = "You are a helpful assistant.\n\n" + prompt_text
+                message = HumanMessage(content=final_prompt)
+                
+                # Direct invocation with retry logic
+                for attempt in range(3):
+                    try:
+                        logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                        result = (self.model | StrOutputParser()).invoke([message])
+                        logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                        return result
+                    except Exception as e:
+                        if attempt < 2:
+                            wait_time = 2 ** attempt
+                            logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                            time.sleep(wait_time)
+                        else:
+                            logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                            raise
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(run_chain)
@@ -766,6 +781,8 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         existing_snapshot = ""
         
         try:
+            from langchain_core.messages import HumanMessage
+            
             prompt_text = self._load_prompt("subagent_impl.prompt")
             
             if is_patch_mode:
@@ -813,7 +830,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             else:
                 logger.warning(f"⚠️ No design pattern found - using defaults")
 
-            # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+            # 🛡️ REMPLACEMENT DIRECT DES VARIABLES : Sans utiliser ChatPromptTemplate
             inject_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": constitution_content,
@@ -833,15 +850,30 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 "format_instructions": format_instructions
             }
             
-            # Replace placeholders safely without template parsing
+            # Replace all placeholders directly
             for key, value in inject_dict.items():
                 placeholder = "{" + key + "}"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
-            prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
-            chain = prompt | self.model | StrOutputParser()
+            # ⚠️ pass directly to model with inline retry
+            final_prompt = "You are a helpful assistant.\n\n" + prompt_text
+            message = HumanMessage(content=final_prompt)
             
-            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
+            raw_output = None
+            for attempt in range(3):
+                try:
+                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    raw_output = (self.model | StrOutputParser()).invoke([message])
+                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        raise
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             new_code = result.get("code", "")
@@ -2052,10 +2084,27 @@ export const getDirname = (metaUrl: string) => {
                 placeholder = "{" + key + "}"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
-            # Créer la chaîne une seule fois, APRÈS tous les remplacements
-            chain = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text) | self.model | StrOutputParser()
+            # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+            from langchain_core.messages import HumanMessage
+            final_prompt = "You are a helpful assistant.\n\n" + prompt_text
+            message = HumanMessage(content=final_prompt)
             
-            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
+            raw_output = None
+            for attempt in range(3):
+                try:
+                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    raw_output = (self.model | StrOutputParser()).invoke([message])
+                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        raise
+            
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
@@ -2145,23 +2194,41 @@ export const getDirname = (metaUrl: string) => {
         prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
         
-        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
         inject_dict = {
             "subtask_checklist": state.get("subtask_checklist", ""),
             "file_tree": state.get("file_tree", ""),
             "format_instructions": parser.get_format_instructions()
         }
         
-        # Replace placeholders safely without template parsing
+        # Replace placeholders directly
         for key, value in inject_dict.items():
             placeholder = "{" + key + "}"
             prompt_text = prompt_text.replace(placeholder, str(value))
         
-        prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
-        chain = prompt | self.model | StrOutputParser()
-        
         try:
-            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
+            from langchain_core.messages import HumanMessage
+            
+            final_prompt = "You are a helpful assistant.\n\n" + prompt_text
+            message = HumanMessage(content=final_prompt)
+            
+            # Direct invocation with retry logic
+            raw_output = None
+            for attempt in range(3):
+                try:
+                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    raw_output = (self.model | StrOutputParser()).invoke([message])
+                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        raise
+            
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
             # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
@@ -2234,10 +2301,12 @@ export const getDirname = (metaUrl: string) => {
         logger.info("🛠️ Tentative de réparation du build...")
         
         try:
+            from langchain_core.messages import HumanMessage
+            
             prompt_text = self._load_prompt("subagent_buildfix.prompt")
-            from langchain_core.prompts import ChatPromptTemplate, PromptTemplate, HumanMessagePromptTemplate
             parser = JsonOutputParser(pydantic_object=SubagentBuildFixOutput)
             format_instructions = parser.get_format_instructions()
+            
             inject_dict = {
                 "code_to_verify": state.get("code_to_verify", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
@@ -2246,14 +2315,32 @@ export const getDirname = (metaUrl: string) => {
                 "feedback_correction": state.get("feedback_correction", ""),
                 "format_instructions": format_instructions
             }
-            # Replace placeholders safely without template parsing
+            
+            # Replace placeholders directly
             for key, value in inject_dict.items():
                 placeholder = "{" + key + "}"
                 prompt_text = prompt_text.replace(placeholder, str(value))
-            prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
-            chain = prompt | self.model | StrOutputParser()
-            # 🛡️ RETRY with backoff
-            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
+            
+            # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+            final_prompt = "You are a helpful assistant.\n\n" + prompt_text
+            message = HumanMessage(content=final_prompt)
+            
+            raw_output = None
+            for attempt in range(3):
+                try:
+                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    raw_output = (self.model | StrOutputParser()).invoke([message])
+                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        raise
+            
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
             sanitized_fix, written = self._persist_code_to_disk(result.get("code", ""))
             merged = self._merge_code(state.get("code_to_verify", ""), sanitized_fix)

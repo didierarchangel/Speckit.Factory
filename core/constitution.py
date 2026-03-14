@@ -4,7 +4,7 @@
 # puis la fige dans le marbre numérique.
 
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
 from pathlib import Path
 import hashlib
 
@@ -26,29 +26,31 @@ class ConstitutionManager:
         Le prompt enrichit automatiquement la demande avec les contraintes techniques
         FullStack avant de la structurer.
         """
-        prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "Tu es l'Architecte en Chef de Speckit.Factory.\n"
-             "Transforme la demande utilisateur en une Constitution formelle.\n\n"
-             "ÉTAPE 1 — Enrichissement :\n"
-             "Améliore la demande en précisant les contraintes techniques et "
-             "les fonctionnalités FullStack.\n\n"
-             "ÉTAPE 2 — Structuration en 4 Piliers :\n"
-             "La Constitution DOIT suivre exactement ce format Markdown :\n\n"
-             "# 1. PILIER ARCHITECTURAL\n"
-             "[Description de l'architecture logicielle]\n\n"
-             "# 2. PILIER DE SÉCURITÉ\n"
-             "[Règles de chiffrement, gestion des accès]\n\n"
-             "# 3. PILIER DE PERFORMANCE\n"
-             "[Exigences de latence, scalabilité]\n\n"
-             "# 4. PILIER DE MAINTENANCE\n"
-             "[Logs, tests, déploiement]\n\n"
-             "Rends la réponse concise mais complète."),
-            ("user", "{user_request}")
-        ])
-
-        chain = prompt | self.llm
-        result = chain.invoke({"user_request": user_request})
+        system_prompt = (
+            "Tu es l'Architecte en Chef de Speckit.Factory.\n"
+            "Transforme la demande utilisateur en une Constitution formelle.\n\n"
+            "ÉTAPE 1 — Enrichissement :\n"
+            "Améliore la demande en précisant les contraintes techniques et "
+            "les fonctionnalités FullStack.\n\n"
+            "ÉTAPE 2 — Structuration en 4 Piliers :\n"
+            "La Constitution DOIT suivre exactement ce format Markdown :\n\n"
+            "# 1. PILIER ARCHITECTURAL\n"
+            "[Description de l'architecture logicielle]\n\n"
+            "# 2. PILIER DE SÉCURITÉ\n"
+            "[Règles de chiffrement, gestion des accès]\n\n"
+            "# 3. PILIER DE PERFORMANCE\n"
+            "[Exigences de latence, scalabilité]\n\n"
+            "# 4. PILIER DE MAINTENANCE\n"
+            "[Logs, tests, déploiement]\n\n"
+            "Rends la réponse concise mais complète."
+        )
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_request)
+        ]
+        
+        result = self.llm.invoke(messages)
         return result.content
 
     def update_constitution(self, new_content: str) -> bool:

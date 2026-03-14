@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
 import json
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,7 @@ class ConstitutionManager:
         if self.template_path.exists():
             base_template = self.template_path.read_text(encoding="utf-8")
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es l'Architecte Suprême du framework Speckit.Factory.
+        system_prompt = f"""Tu es l'Architecte Suprême du framework Speckit.Factory.
             Ta mission est de transformer une demande utilisateur en une CONSTITUTION rigoureuse.
             
             La Constitution doit impérativement définir :
@@ -59,19 +58,19 @@ class ConstitutionManager:
             - Sois propre et concis dans la génération.
 
             Utilise ce template comme base de structure :
-            {template}
+            {base_template}
             
-            SOIS EXHAUSTIF. Ne fais pas de suppositions floues."""),
-            ("user", "Demande utilisateur : {request}")
-        ])
+            SOIS EXHAUSTIF. Ne fais pas de suppositions floues."""
 
-        chain = prompt | self.model | StrOutputParser()
-        content = chain.invoke({
-            "template": base_template, 
-            "request": user_request,
-            "stack_info": stack_info,
-            "design_style": design_style
-        })
+        user_message = f"Demande utilisateur : {user_request}"
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message)
+        ]
+
+        raw_output = self.model.invoke(messages)
+        content = StrOutputParser().parse(raw_output.content)
 
         # Sauvegarde
         self.constitution_path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,8 +88,7 @@ class ConstitutionManager:
         if self.constitution_path.exists():
             existing_content = self.constitution_path.read_text(encoding="utf-8")
         
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es l'Architecte de Maintenance de Speckit.Factory.
+        system_prompt = """Tu es l'Architecte de Maintenance de Speckit.Factory.
             Ta mission est d'amender une CONSTITUTION existante pour y intégrer une nouvelle COMPOSANTE (Fonctionnalité).
             
             Tu reçois :
@@ -104,16 +102,17 @@ class ConstitutionManager:
             - Ne jamais supprimer les règles de sécurité ou de stack existantes.
             - Si la Constitution n'existait pas, crée-la en te basant sur le Semantic Code Map pour déduire la stack.
             
-            RÉPONDS UNIQUEMENT AVEC LE CONTENU COMPLET DU NOUVEAU FICHIER CONSTITUTION.MD."""),
-            ("user", "CONSTITUTION ACTUELLE :\n{existing}\n\nSEMANTIC CODE MAP :\n{semantic_map}\n\nNOUVELLE DEMANDE : {request}")
-        ])
+            RÉPONDS UNIQUEMENT AVEC LE CONTENU COMPLET DU NOUVEAU FICHIER CONSTITUTION.MD."""
 
-        chain = prompt | self.model | StrOutputParser()
-        content = chain.invoke({
-            "existing": existing_content, 
-            "semantic_map": semantic_map,
-            "request": user_request
-        })
+        user_message = f"CONSTITUTION ACTUELLE :\n{existing_content}\n\nSEMANTIC CODE MAP :\n{semantic_map}\n\nNOUVELLE DEMANDE : {user_request}"
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message)
+        ]
+
+        raw_output = self.model.invoke(messages)
+        content = StrOutputParser().parse(raw_output.content)
 
         self.constitution_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.constitution_path, "w", encoding="utf-8") as f:

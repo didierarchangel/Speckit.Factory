@@ -5,8 +5,8 @@ import os
 import json
 import logging
 from pathlib import Path
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 from core.guard import TaskAppOutput
 
@@ -34,27 +34,27 @@ class TaskAppManager:
 
         Retourne un dictionnaire avec les clés 'task_app1' et 'task_app2'.
         """
-        prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "Tu es un Architecte Logiciel Senior. En te basant sur la Constitution fournie, "
-             "tu dois initialiser l'état du projet.\n\n"
-             "RÈGLES D'INITIALISATION :\n"
-             "1. Task_App1 (Tâches non réalisées) : Liste toutes les tâches architecturales "
-             "initiales nécessaires pour mettre en place le projet, sous forme de checklist "
-             "Markdown (- [ ] Tâche).\n"
-             "2. Task_App2 (Tâches réalisées) : Au début du projet, ce fichier est vide ou "
-             "contient uniquement l'état initial 'Projet vierge'.\n\n"
-             "{format_instructions}"),
-            ("user", "Constitution:\n{constitution_content}")
-        ])
-
-        chain = prompt | self.model | self.parser
+        system_prompt = (
+            "Tu es un Architecte Logiciel Senior. En te basant sur la Constitution fournie, "
+            "tu dois initialiser l'état du projet.\n\n"
+            "RÈGLES D'INITIALISATION :\n"
+            "1. Task_App1 (Tâches non réalisées) : Liste toutes les tâches architecturales "
+            "initiales nécessaires pour mettre en place le projet, sous forme de checklist "
+            "Markdown (- [ ] Tâche).\n"
+            "2. Task_App2 (Tâches réalisées) : Au début du projet, ce fichier est vide ou "
+            "contient uniquement l'état initial 'Projet vierge'.\n\n"
+            f"Format instructions:\n{self.parser.get_format_instructions()}"
+        )
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Constitution:\n{constitution_content}")
+        ]
         
         try:
-            content = chain.invoke({
-                "constitution_content": constitution_content,
-                "format_instructions": self.parser.get_format_instructions()
-            })
+            # Direct invocation with SystemMessage and HumanMessage
+            raw_output = self.model.invoke(messages)
+            content = self.parser.parse(raw_output.content)
             return content
         except Exception as e:
             logger.error(f"Erreur lors de la génération/parsing du contenu : {e}")

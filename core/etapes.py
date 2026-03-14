@@ -8,8 +8,8 @@
 import re
 import logging
 from pathlib import Path
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,7 @@ class EtapeManager:
         if self.etapes_path.exists():
             existing_plan = self.etapes_path.read_text(encoding="utf-8")
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie, l'état actuel du code (SEMANTIC MAP) et le PLAN EXISTANT,
+        system_prompt = """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie, l'état actuel du code (SEMANTIC MAP) et le PLAN EXISTANT,
             découpe le projet en étapes techniques majeures (ex: 01, 02, 03).
             
             Tu DOIS :
@@ -88,16 +87,17 @@ class EtapeManager:
             ## [ ] 02_nom_etape : Titre (Nouvelle étape à faire)
             - [ ] Sous-tâche à réaliser
             
-            IMPORTANT : Les IDs d'étape (01_nom_etape) doivent être courts, sans espaces, et utiliser des underscores."""),
-            ("user", "CONSTITUTION :\n{content}\n\nSEMANTIC MAP (État du code actuel) :\n{semantic_map}\n\nPLAN EXISTANT (etapes.md actuel) :\n{existing_plan}")
-        ])
+            IMPORTANT : Les IDs d'étape (01_nom_etape) doivent être courts, sans espaces, et utiliser des underscores."""
 
-        chain = prompt | self.model | StrOutputParser()
-        steps = chain.invoke({
-            "content": constitution_content, 
-            "semantic_map": semantic_map,
-            "existing_plan": existing_plan
-        })
+        user_message = f"CONSTITUTION :\n{constitution_content}\n\nSEMANTIC MAP (État du code actuel) :\n{semantic_map}\n\nPLAN EXISTANT (etapes.md actuel) :\n{existing_plan}"
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message)
+        ]
+
+        raw_output = self.model.invoke(messages)
+        steps = StrOutputParser().parse(raw_output.content)
 
         self.etapes_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.etapes_path, "w", encoding="utf-8") as f:
@@ -119,8 +119,7 @@ class EtapeManager:
         if self.etapes_path.exists():
             existing_etapes = self.etapes_path.read_text(encoding="utf-8")
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un chef de projet DevOps. Ta mission est d'extraire la NOUVELLE fonctionnalité
+        system_prompt = """Tu es un chef de projet DevOps. Ta mission est d'extraire la NOUVELLE fonctionnalité
             ajoutée à la Constitution et de la transformer en une ou plusieurs ÉTAPES TECHNIQUES à la suite du plan existant.
             
             Tu reçois :
@@ -134,16 +133,17 @@ class EtapeManager:
             - Ne pas répéter les étapes déjà présentes dans le plan actuel.
             - **RÈGLE RÉALITÉ** : Marquer [x] UNIQUEMENT si le fichier est dans la Semantic Map.
             - Si un fichier n'est pas vu sur le disque, laisse la tâche en [ ].
-            - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""),
-            ("user", "CONSTITUTION :\n{const}\n\nPLAN ACTUEL :\n{etapes}\n\nSEMANTIC MAP :\n{semantic_map}")
-        ])
+            - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""
 
-        chain = prompt | self.model | StrOutputParser()
-        new_steps = chain.invoke({
-            "const": constitution_content, 
-            "etapes": existing_etapes,
-            "semantic_map": semantic_map
-        })
+        user_message = f"CONSTITUTION :\n{constitution_content}\n\nPLAN ACTUEL :\n{existing_etapes}\n\nSEMANTIC MAP :\n{semantic_map}"
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message)
+        ]
+
+        raw_output = self.model.invoke(messages)
+        new_steps = StrOutputParser().parse(raw_output.content)
 
         # Append to etapes.md
         with open(self.etapes_path, "a", encoding="utf-8") as f:
