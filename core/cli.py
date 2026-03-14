@@ -608,7 +608,7 @@ OPENAI_API_KEY=votre_cle_ici
 
 # Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
 # Get one at https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=AIzaSyDMf3P_X1FOoHBkERkRJjYiK-KxdQQym4Q
+GOOGLE_API_KEY=votre_cle_ici
 
 # OpenRouter (DeepSeek, etc.)
 OPENROUTER_API_KEY=votre_cle_ici
