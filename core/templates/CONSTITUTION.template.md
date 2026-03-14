@@ -22,6 +22,48 @@ Description  : Le modèle de base pour toute nouvelle Constitution.
 ## 1. STACK TECHNIQUE IMPOSÉE (ANTI-HALLUCINATION)
 Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer des bibliothèques non listées ici.
 
+### 1.0 ⚠️ DIRECTIVE ESM OBLIGATOIRE (CRITIQUE)
+**TOUS les projets Speckit.Factory DOIVENT être configurés en ES Modules (ESM).** Cette directive surpasse toute autre configuration.
+
+#### Backend ESM Configuration (OBLIGATOIRE)
+- **package.json** DOIT contenir : `"type": "module"`
+- **tsconfig.json** DOIT contenir :
+  ```json
+  {
+    "compilerOptions": {
+      "module": "ESNext",
+      "moduleResolution": "node",
+      "target": "ES2022"
+    }
+  }
+  ```
+- **Imports au backend** : TOUS les chemins relatifs DOIVENT inclure l'extension `.js`
+  - ✅ `import { User } from "./models/user.js"`
+  - ❌ `import { User } from "./models/user"` (INTERDIT)
+  - ❌ `import User = require("./models/user")` (CommonJS INTERDIT)
+- **Scripts npm** (backend/package.json) :
+  ```json
+  {
+    "scripts": {
+      "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nodemon --exec ts-node --esm src/app.ts",
+      "build": "tsc",
+      "start": "node dist/app.js"
+    },
+    "devDependencies": {
+      "ts-node": "^10.9.0",
+      "cross-env": "^7.0.0"
+    }
+  }
+  ```
+
+#### Frontend ESM Configuration (OBLIGATOIRE)
+- **package.json** DOIT contenir : `"type": "module"`
+- Vite gère ESM nativement - aucune configuration supplémentaire requise
+
+**ZÉRO EXCEPTION** : Si ESM n'est pas configuré, le projet est cassé et non-conforme.
+
+---
+
 ### 1.1 Backend
 * **Langage** : Node.js 20, TypeScript (Configuration : ES Modules, Target: ES2022)
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/backend`.
