@@ -42,6 +42,246 @@ logging.getLogger("langchain_core").setLevel(logging.ERROR)
 # Configuration des chemins par défaut
 DEFAULT_PROJECT_NAME = "SpecKit-App"
 
+# ============================================================
+# 🔧 ROUTEURS BACKEND & FRONTEND (GÉNÉRATEURS)
+# ============================================================
+
+def generate_express_project(target_path: Path):
+    """Génère la structure de base pour Express.js."""
+    backend_path = target_path / "backend"
+    src_path = backend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    package_json = {
+        "name": "backend-express",
+        "version": "1.0.0",
+        "type": "module",
+        "main": "dist/index.js",
+        "scripts": {
+            "dev": "node --loader tsx --watch src/index.ts",
+            "build": "tsc",
+            "start": "node dist/index.js"
+        },
+        "dependencies": {
+            "express": "^4.18.0",
+            "cors": "^2.8.5",
+            "dotenv": "^16.0.0"
+        },
+        "devDependencies": {
+            "typescript": "^5.0.0",
+            "tsx": "^3.12.0",
+            "@types/node": "^20.0.0",
+            "@types/express": "^4.17.0"
+        }
+    }
+    
+    (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (src_path / "index.ts").write_text("import express from 'express';\nconst app = express();\napp.listen(5000);\n")
+    click.echo("✅ Projet Express configuré")
+
+def generate_nestjs_project(target_path: Path):
+    """Génère la structure de base pour NestJS."""
+    backend_path = target_path / "backend"
+    src_path = backend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    package_json = {
+        "name": "backend-nestjs",
+        "version": "1.0.0",
+        "main": "dist/main.js",
+        "scripts": {
+            "dev": "nest start --watch",
+            "build": "nest build",
+            "start": "node dist/main.js"
+        },
+        "dependencies": {
+            "@nestjs/common": "^10.0.0",
+            "@nestjs/core": "^10.0.0",
+            "@nestjs/platform-express": "^10.0.0",
+            "reflect-metadata": "^0.1.0",
+            "rxjs": "^7.8.0"
+        },
+        "devDependencies": {
+            "@nestjs/cli": "^10.0.0",
+            "typescript": "^5.0.0"
+        }
+    }
+    
+    (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (src_path / "main.ts").write_text("import { NestFactory } from '@nestjs/core';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  await app.listen(3000);\n}\nbootstrap();\n")
+    click.echo("✅ Projet NestJS configuré")
+
+def generate_fastapi_project(target_path: Path):
+    """Génère la structure pour FastAPI (Python)."""
+    backend_path = target_path / "backend"
+    src_path = backend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    requirements = "fastapi==0.104.0\nuvicorn==0.24.0\npydantic==2.5.0\npython-dotenv==1.0.0\n"
+    (backend_path / "requirements.txt").write_text(requirements)
+    
+    main_py = """from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def read_root():
+    return {"message": "FastAPI Backend"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
+    (src_path / "main.py").write_text(main_py)
+    click.echo("✅ Projet FastAPI configuré")
+
+def generate_flask_project(target_path: Path):
+    """Génère la structure pour Flask (Python)."""
+    backend_path = target_path / "backend"
+    src_path = backend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    requirements = "flask==3.0.0\nflask-cors==4.0.0\npython-dotenv==1.0.0\n"
+    (backend_path / "requirements.txt").write_text(requirements)
+    
+    main_py = """from flask import Flask
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route("/")
+def hello():
+    return {"message": "Flask Backend"}
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
+"""
+    (src_path / "main.py").write_text(main_py)
+    click.echo("✅ Projet Flask configuré")
+
+def generate_react_vite_project(target_path: Path):
+    """Génère la structure pour React + Vite."""
+    frontend_path = target_path / "frontend"
+    src_path = frontend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    package_json = {
+        "name": "frontend-react",
+        "version": "1.0.0",
+        "type": "module",
+        "scripts": {
+            "dev": "vite",
+            "build": "vite build",
+            "preview": "vite preview"
+        },
+        "dependencies": {
+            "react": "^18.0.0",
+            "react-dom": "^18.0.0"
+        },
+        "devDependencies": {
+            "vite": "^5.0.0",
+            "@vitejs/plugin-react": "^4.0.0",
+            "typescript": "^5.0.0"
+        }
+    }
+    
+    (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (src_path / "App.tsx").write_text("export default function App() {\n  return <h1>React + Vite</h1>;\n}\n")
+    click.echo("✅ Projet React (Vite) configuré")
+
+def generate_nextjs_project(target_path: Path):
+    """Génère la structure pour Next.js."""
+    frontend_path = target_path / "frontend"
+    app_path = frontend_path / "app"
+    app_path.mkdir(parents=True, exist_ok=True)
+    
+    package_json = {
+        "name": "frontend-nextjs",
+        "version": "1.0.0",
+        "scripts": {
+            "dev": "next dev",
+            "build": "next build",
+            "start": "next start"
+        },
+        "dependencies": {
+            "next": "^14.0.0",
+            "react": "^18.0.0",
+            "react-dom": "^18.0.0"
+        },
+        "devDependencies": {
+            "typescript": "^5.0.0",
+            "@types/node": "^20.0.0"
+        }
+    }
+    
+    (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (app_path / "page.tsx").write_text("export default function Home() {\n  return <main>Next.js Frontend</main>;\n}\n")
+    click.echo("✅ Projet Next.js configuré")
+
+def generate_vue_vite_project(target_path: Path):
+    """Génère la structure pour Vue.js + Vite."""
+    frontend_path = target_path / "frontend"
+    src_path = frontend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    package_json = {
+        "name": "frontend-vue",
+        "version": "1.0.0",
+        "type": "module",
+        "scripts": {
+            "dev": "vite",
+            "build": "vite build"
+        },
+        "dependencies": {
+            "vue": "^3.0.0"
+        },
+        "devDependencies": {
+            "vite": "^5.0.0",
+            "@vitejs/plugin-vue": "^5.0.0",
+            "typescript": "^5.0.0"
+        }
+    }
+    
+    (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (src_path / "App.vue").write_text("<template><h1>Vue + Vite</h1></template>\n")
+    click.echo("✅ Projet Vue.js (Vite) configuré")
+
+# 🗺️ Mappings des générateurs
+BACKEND_GENERATORS = {
+    "express": generate_express_project,
+    "nestjs": generate_nestjs_project,
+    "fastapi": generate_fastapi_project,
+    "flask": generate_flask_project
+}
+
+FRONTEND_GENERATORS = {
+    "react-vite": generate_react_vite_project,
+    "nextjs": generate_nextjs_project,
+    "vue-vite": generate_vue_vite_project
+}
+
+# 💡 Recommandations intelligentes de Backend selon Frontend
+BACKEND_RECOMMENDATIONS = {
+    "react-vite": "express",      # React classique → Express
+    "nextjs": "nestjs",           # Next.js → NestJS (TypeScript, scalable)
+    "vue-vite": "express",        # Vue → Express (léger)
+    "django-templates": "fastapi" # Django → FastAPI (Python)
+}
+
+def get_recommended_backend(frontend_choice: str) -> str:
+    """Retourne le backend recommandé pour le frontend sélectionné."""
+    return BACKEND_RECOMMENDATIONS.get(frontend_choice, "express")
+
 @click.group()
 def cli():
     """🛡️ Speckit.Factory - Constitutional DevOps AI Framework"""
@@ -137,6 +377,35 @@ def init(path, here):
         if not selected_providers:
             click.echo("🛑 Veuillez sélectionner au moins une IA.")
 
+# Sélection des modèles spécifiques pour les provider OpenRouter (DeepSeek, Claude, Grok, etc.)
+        openrouter_model = None
+
+    if "openrouter" in selected_providers:
+
+        click.echo("\n🌐 Sélection du modèle OpenRouter :")
+
+        openrouter_models = {
+            "1": ("DeepSeek R1 (Free)", "deepseek/deepseek-r1:free"),
+            "2": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
+            "3": ("Claude 3.5 Sonnet", "anthropic/claude-3.5-sonnet"),
+            "4": ("Grok 2", "x-ai/grok-2"),
+            "5": ("Llama 3 70B", "meta-llama/llama-3-70b-instruct"),
+            "6": ("Mixtral 8x7B", "mistralai/mixtral-8x7b")
+        }
+
+        for key, (name, _) in openrouter_models.items():
+            click.echo(f" {key}) {name}")
+
+        choice = click.prompt(
+            "Choisissez un modèle",
+            default="1",
+            type=click.Choice(list(openrouter_models.keys()))
+        )
+
+        openrouter_model = openrouter_models[choice][1]
+    else:
+        openrouter_model = None
+    
     # Sélection interactive de la Stack
     click.echo("\n🏗️ Configuration de la Stack Technique :")
     
@@ -149,32 +418,67 @@ def init(path, here):
     d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
     selected_design = design_choices[d_choice]
     
-    backend_choices = {
-        "1": "Node.js (Express)",
-        "2": "Node.js (NestJS)",
-        "3": "Python (FastAPI)",
-        "4": "Python (Flask)"
-    }
-    click.echo("--- Backend ---")
-    for k, v in backend_choices.items(): click.echo(f" {k}) {v}")
-    b_choice = click.prompt("Votre choix de Backend", default="1", type=click.Choice(list(backend_choices.keys())))
-    selected_backend = backend_choices[b_choice]
-
+    # ============================================================
+    # 📱 SÉLECTION FRONTEND EN PREMIER (pour recommandations)
+    # ============================================================
     frontend_choices = {
-        "1": "React (Vite)",
-        "2": "Next.js (Vite)",
-        "3": "Vue.js (Vite)",
-        "4": "Python (Django Templates)",
-        "5": "Aucun (API Pure)"
+        "1": ("react-vite", "React (Vite)"),
+        "2": ("nextjs", "Next.js"),
+        "3": ("vue-vite", "Vue.js (Vite)"),
+        "4": ("django-templates", "Python (Django Templates)"),
+        "5": ("none", "Aucun (API Pure)")
     }
-    click.echo("\n--- Frontend ---")
-    for k, v in frontend_choices.items(): click.echo(f" {k}) {v}")
+
+    click.echo("\n--- Frontend (sélectionnez en premier pour recommandations) ---")
+    for k, v in frontend_choices.items(): 
+        click.echo(f" {k}) {v[1]}")
     f_choice = click.prompt("Votre choix de Frontend", default="1", type=click.Choice(list(frontend_choices.keys())))
-    selected_frontend = frontend_choices[f_choice]    # Création de l'arborescence de base
-    if selected_backend != "Aucun":
+    selected_frontend_id, selected_frontend_label = frontend_choices[f_choice]
+    
+    # ============================================================
+    # 💻 SÉLECTION BACKEND (avec recommandation intelligente)
+    # ============================================================
+    backend_choices = {
+        "1": ("express", "Node.js (Express) ⚡ Prioritaire"),
+        "2": ("nestjs", "Node.js (NestJS)"),
+        "3": ("fastapi", "Python (FastAPI)"),
+        "4": ("flask", "Python (Flask)")
+    }
+    
+    recommended_backend = get_recommended_backend(selected_frontend_id)
+    recommended_idx = None
+    for idx, (backend_id, _) in backend_choices.items():
+        if backend_id == recommended_backend:
+            recommended_idx = idx
+            break
+    
+    click.echo(f"\n--- Backend ({selected_frontend_label} recommande: {recommended_backend}) ---")
+    for k, v in backend_choices.items(): 
+        is_recommended = " 💡" if k == recommended_idx else ""
+        click.echo(f" {k}) {v[1]}{is_recommended}")
+    
+    default_backend_choice = recommended_idx or "1"
+    b_choice = click.prompt("Votre choix de Backend", default=default_backend_choice, type=click.Choice(list(backend_choices.keys())))
+    selected_backend_id, selected_backend_label = backend_choices[b_choice]
+    
+    # ============================================================
+    # 🚀 APPELS AUX GÉNÉRATEURS (via MAPPINGS)
+    # ============================================================
+    click.echo("\n🔧 Initialisation des structures de projet...")
+    
+    # Création de l'arborescence de base
+    if selected_backend_id != "none":
         (target_path / "backend" / "src").mkdir(parents=True, exist_ok=True)
-    if selected_frontend != "Aucun (API Pure)":
+        # Appel du générateur Backend via le mapping
+        if selected_backend_id in BACKEND_GENERATORS:
+            BACKEND_GENERATORS[selected_backend_id](target_path)
+
+    if selected_frontend_id != "none":
         (target_path / "frontend" / "src").mkdir(parents=True, exist_ok=True)
+        # Appel du générateur Frontend via le mapping
+        if selected_frontend_id in FRONTEND_GENERATORS:
+            FRONTEND_GENERATORS[selected_frontend_id](target_path)
+
 
     # Préparation des templates locaux (.speckit/templates)
     templates_dir = target_path / ".speckit" / "templates"
@@ -185,19 +489,18 @@ def init(path, here):
     
     # 1. Injection du Backend Template
     backend_ts_map = {
-        "Node.js (Express)": "tsconfig.backend.node.json",
-        "Node.js (NestJS)": "tsconfig.backend.node.json",
-        "Python (FastAPI)": None,
-        "Python (Flask)": None
+        "express": "tsconfig.backend.node.json",
+        "nestjs": "tsconfig.backend.node.json",
+        "fastapi": None,
+        "flask": None
     }
     
-    selected_backend_name = selected_backend
-    if selected_backend_name in backend_ts_map and backend_ts_map[selected_backend_name]:
-        source = factory_root / "core" / "templates" / "tsconfigs" / backend_ts_map[selected_backend_name]
+    if selected_backend_id in backend_ts_map and backend_ts_map[selected_backend_id]:
+        source = factory_root / "core" / "templates" / "tsconfigs" / backend_ts_map[selected_backend_id]
         if source.exists():
             # Copie pour le FileManager (vrai Golden Template)
             shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
-            click.echo(f"✅ Template Backend ({selected_backend_name}) stocké localement.")
+            click.echo(f"✅ Template Backend ({selected_backend_label}) stocké localement.")
             
             # Injection immédiate pour tsc
             target_ts = target_path / "backend" / "tsconfig.json"
@@ -205,22 +508,21 @@ def init(path, here):
             click.echo("✅ `backend/tsconfig.json` initialisé.")
             
             # --- Nouveau : Configuration .env du Backend ---
-            setup_backend_env_logic(target_path, selected_backend)
+            setup_backend_env_logic(target_path, selected_backend_id)
 
     # 2. Injection du Frontend Template
     frontend_ts_map = {
-        "React (Vite)": "tsconfig.frontend.react.json",
-        "Next.js (Vite)": "tsconfig.frontend.next.json",
-        "Vue.js (Vite)": "tsconfig.frontend.react.json"
+        "react-vite": "tsconfig.frontend.react.json",
+        "nextjs": "tsconfig.frontend.next.json",
+        "vue-vite": "tsconfig.frontend.react.json"
     }
 
-    selected_frontend_name = selected_frontend
-    if selected_frontend_name in frontend_ts_map:
-        source = factory_root / "core" / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend_name]
+    if selected_frontend_id in frontend_ts_map:
+        source = factory_root / "core" / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend_id]
         if source.exists():
             # Copie pour le FileManager
             shutil.copy(str(source), str(templates_dir / "tsconfig.frontend.json"))
-            click.echo(f"✅ Template Frontend ({selected_frontend_name}) stocké localement.")
+            click.echo(f"✅ Template Frontend ({selected_frontend_label}) stocké localement.")
 
             # Injection immédiate pour tsc
             target_ts = target_path / "frontend" / "tsconfig.json"
@@ -243,9 +545,10 @@ def init(path, here):
         "completed_specs": [],
         "active_tasks": {},
         "selected_ais": selected_providers,
+        "openrouter_model": openrouter_model,  # Persistance du modèle OpenRouter sélectionné
         "stack_preferences": {
-            "backend": selected_backend,
-            "frontend": selected_frontend,
+            "backend": selected_backend_id,
+            "frontend": selected_frontend_id,
             "design": selected_design
         }
     }
@@ -316,7 +619,7 @@ OPENROUTER_API_KEY=votre_cle_ici
     if not env_path.exists():
         env_path.write_text(content, encoding="utf-8")
 
-def setup_backend_env_logic(target_path: Path, backend_type: str):
+def setup_backend_env_logic(target_path: Path, backend_id: str):
     """Crée un fichier .env spécifique au backend sélectionné."""
     backend_env_path = target_path / "backend" / ".env"
     backend_env_example_path = target_path / "backend" / ".env.example"
@@ -329,7 +632,8 @@ JWT_SECRET=super_secret_key_à_changer_en_production
 NODE_ENV=development
 """
     
-    if "FastAPI" in backend_type or "Flask" in backend_type:
+    # Déterminer le type (Python ou Node) basé sur l'ID
+    if backend_id in ["fastapi", "flask"]:
         content = """# 🐍 Python Backend Configuration
 DATABASE_URL=sqlite:///./sql_app.db
 SECRET_KEY=votre_cle_secrete_python
@@ -471,6 +775,19 @@ def get_llm(provider: str = None, model_name: str = None):
 
         from langchain_openai import ChatOpenAI
 
+        # Récupérer le modèle depuis lock file si pas de modèle spécifié
+        if not model_name:
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                try:
+                    with open(lock_file, "r") as f:
+                        data = json.load(f)
+                        saved_model = data.get("openrouter_model")
+                        if saved_model:
+                            model_name = saved_model
+                except:
+                    pass
+        
         model = model_name or "deepseek/deepseek-r1:free"
 
         return ChatOpenAI(
