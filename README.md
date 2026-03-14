@@ -389,6 +389,26 @@ L'IA reprendra le travail sur les sous-tâches non-cochées et l'Auditeur vérif
 
 ---
 
+## 🌐 Providers IA Supportés
+
+Speckit.Factory fonctionne avec une variété de providers IA pour s'adapter à votre contexte géographique, vos préférences et vos besoins :
+
+| Provider | API directe | Contourne géoblocage | Modèles |
+|----------|:---:|:---:|---|
+| **Google** (Gemini) | ✅ | ❌ | Gemini 2.5 Flash, Pro, etc. |
+| **OpenAI** (GPT) | ✅ | ❌ | GPT-4o, GPT-4 Turbo, etc. |
+| **Anthropic** (Claude) | ✅ | ❌ | Claude 3.5 Sonnet, Opus, etc. |
+| **DeepSeek** | ✅ | ❌ | DeepSeek V3, Coder, etc. |
+| **Grok** (xAI) | ✅ | ❌ | Grok-3, Grok-2, etc. |
+| **OpenRouter** | Passerelle | ✅ | 100+ modèles (accès universel) |
+
+### 💡 Quand Utiliser Quoi ?
+
+- **API directe** : Utiliser si vous avez accès à ces services dans votre région.
+- **OpenRouter (passerelle)** : Idéal pour contourner les blocages géographiques ou tester rapidement plusieurs modèles avec une seule clé.
+
+---
+
 ## ⚙️ Configuration des Clés API
 
 Pour que Speckit.Factory puisse communiquer avec les IA, vous devez configurer vos clés API :
@@ -397,7 +417,7 @@ Pour que Speckit.Factory puisse communiquer avec les IA, vous devez configurer v
     ```bash
     cp .env.example .env
     ```
-2.  **Remplissez vos clés** : Ouvrez le fichier `.env` et insérez vos clés (Google, Anthropic ou OpenAI).
+2.  **Remplissez vos clés** : Ouvrez le fichier `.env` et insérez vos clés (Google, Anthropic, OpenAI, DeepSeek, Grok ou OpenRouter).
     ```text
     GOOGLE_API_KEY=votre_cle_ici
     ```

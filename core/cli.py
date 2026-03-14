@@ -101,32 +101,39 @@ def init(path, here):
                 shutil.copy(str(item), str(design_path / item.name))
         click.echo("✅ Intelligence Graphique (design/) initialisée.")
     
-    # Sélection interactive des IA (Style GitHub Spec-Kit)
+    # Sélection interactive des IA
     click.echo("\n🤖 Configuration des IA partenaires (Sélectionnez une ou plusieurs) :")
+
     available_ais = {
-        "1": ("Claude", "anthropic"),
-        "2": ("Codex-Cli", "openai"),
-        "3": ("Gemini 2.5 Flash (Rapide)", "google-flash")
+        "1": ("Google Gemini", "google"),
+        "2": ("OpenAI GPT", "openai"),
+        "3": ("Anthropic Claude", "anthropic"),
+        "4": ("DeepSeek", "deepseek"),
+        "5": ("xAI Grok", "grok"),
+        "6": ("OpenRouter (Accès multi-modèles)", "openrouter")
     }
-    
+
     selected_providers = []
+
     while not selected_providers:
+
         for key, (name, _) in available_ais.items():
             click.echo(f" {key}) {name}")
-        
+
         choices = click.prompt(
-            "Entrez les numéros séparés par une virgule (ex: 1,2,4)",
+            "Entrez les numéros séparés par une virgule (ex: 1,3,6)",
             default="1",
             type=str
         )
-        
+
         for c in choices.split(","):
             c = c.strip()
+
             if c in available_ais:
                 selected_providers.append(available_ais[c][1])
             else:
                 click.echo(f"⚠️ Choix '{c}' invalide.")
-        
+
         if not selected_providers:
             click.echo("🛑 Veuillez sélectionner au moins une IA.")
 
@@ -298,6 +305,10 @@ OPENAI_API_KEY=votre_cle_ici
 # Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
 # Get one at https://aistudio.google.com/app/apikey
 GOOGLE_API_KEY=AIzaSyDMf3P_X1FOoHBkERkRJjYiK-KxdQQym4Q
+
+# OpenRouter (DeepSeek, etc.)
+OPENROUTER_API_KEY=votre_cle_ici
+
 """
     env_example_path.write_text(content, encoding="utf-8")
     
@@ -347,7 +358,9 @@ def setup_env(path):
     click.echo(f"✅ Fichier .env.example créé dans : {target_path.absolute()}")
 
 def get_llm(provider: str = None, model_name: str = None):
-    """Factory pour obtenir le modèle LLM selon le provider (auto-sélection si vide)."""
+    """Factory LLM multi-provider Speckit."""
+
+    # Auto-détection depuis .spec-lock.json
     if not provider:
         lock_file = Path(".spec-lock.json")
         if lock_file.exists():
@@ -359,47 +372,115 @@ def get_llm(provider: str = None, model_name: str = None):
                         provider = selected[0]
             except:
                 pass
-    
-    provider = (provider or "google").lower() # Fallback ultime et case-insensibilité
+
+    provider = (provider or "google").lower()
+
+    # ---------------- GOOGLE (Gemini) ----------------
     if provider in ["google", "google-flash"]:
+
         if not os.environ.get("GOOGLE_API_KEY"):
-            click.echo("\n❌ ERREUR : La clé GOOGLE_API_KEY est manquante.")
-            click.echo(f"📍 Dossier actuel : {os.getcwd()}")
-            click.echo("💡 Assurez-vous d'avoir un fichier .env contenant 'GOOGLE_API_KEY=votre_cle'.")
-            
+            raise ValueError("GOOGLE_API_KEY manquant")
+
         from langchain_google_genai import ChatGoogleGenerativeAI
-        # Utilisation de noms plus robustes/récents pour éviter les 404
-        if not model_name:
-            model = "gemini-2.5-flash" if provider == "google" else "gemini-2.5-flash-lite"
-        else:
-            model = model_name
-        
-        # Configuration avec timeout pour éviter les blocages
+
+        model = model_name or (
+            "gemini-2.5-flash"
+            if provider == "google"
+            else "gemini-2.5-flash-lite"
+        )
+
         return ChatGoogleGenerativeAI(
             model=model,
-            timeout=60,  # Timeout correct pour langchain-google-genai
-            max_retries=2       # Retry automatique en cas d'échec
+            timeout=60,
+            max_retries=2
         )
-    elif provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        model = model_name or "claude-3-5-sonnet-20240620"
-        return ChatAnthropic(model=model, timeout=60, max_retries=2)
+
+    # ---------------- OPENAI ----------------
     elif provider == "openai":
+
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY manquant")
+
         from langchain_openai import ChatOpenAI
+
         model = model_name or "gpt-4o"
-        return ChatOpenAI(model=model, request_timeout=60, max_retries=2)
-    elif provider == "copilot":
-        # Simulation via OpenAI ou spécifique Github si implémenté
+
+        return ChatOpenAI(
+            model=model,
+            request_timeout=60,
+            max_retries=2
+        )
+
+    # ---------------- ANTHROPIC ----------------
+    elif provider == "anthropic":
+
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise ValueError("ANTHROPIC_API_KEY manquant")
+
+        from langchain_anthropic import ChatAnthropic
+
+        model = model_name or "claude-3-5-sonnet-20240620"
+
+        return ChatAnthropic(
+            model=model,
+            timeout=60,
+            max_retries=2
+        )
+
+    # ---------------- DEEPSEEK ----------------
+    elif provider == "deepseek":
+
+        if not os.environ.get("DEEPSEEK_API_KEY"):
+            raise ValueError("DEEPSEEK_API_KEY manquant")
+
         from langchain_openai import ChatOpenAI
-        click.echo("💡 GitHub Copilot utilisé via l'API OpenAI (Codex compatible).")
-        model = model_name or "gpt-4-turbo"
-        return ChatOpenAI(model=model)
-    elif provider == "minimax":
-        # Deprecated: Minimax is no longer supported directly. 
-        # Redirection vers Gemini Flash pour assurer la continuité
-        click.echo("⚠️ Provider 'minimax' obsolète. Basculement sur Gemini 1.5 Flash...")
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+
+        model = model_name or "deepseek-chat"
+
+        return ChatOpenAI(
+            model=model,
+            openai_api_key=os.environ.get("DEEPSEEK_API_KEY"),
+            openai_api_base="https://api.deepseek.com/v1",
+            request_timeout=60,
+            max_retries=2
+        )
+
+    # ---------------- GROK ----------------
+    elif provider == "grok":
+
+        if not os.environ.get("GROK_API_KEY"):
+            raise ValueError("GROK_API_KEY manquant")
+
+        from langchain_openai import ChatOpenAI
+
+        model = model_name or "grok-2-latest"
+
+        return ChatOpenAI(
+            model=model,
+            openai_api_key=os.environ.get("GROK_API_KEY"),
+            openai_api_base="https://api.x.ai/v1",
+            request_timeout=60,
+            max_retries=2
+        )
+
+    # ---------------- OPENROUTER ----------------
+    elif provider == "openrouter":
+
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            raise ValueError("OPENROUTER_API_KEY manquant")
+
+        from langchain_openai import ChatOpenAI
+
+        model = model_name or "deepseek/deepseek-r1:free"
+
+        return ChatOpenAI(
+            model=model,
+            openai_api_key=os.environ.get("OPENROUTER_API_KEY"),
+            openai_api_base="https://openrouter.ai/api/v1",
+            request_timeout=60,
+            max_retries=2
+        )
+
     else:
         raise ValueError(f"Provider {provider} non supporté.")
 
