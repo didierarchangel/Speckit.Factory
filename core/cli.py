@@ -602,9 +602,9 @@ def setup_env_logic(target_path: Path):
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=votre_cle_ici
 
-
 # CODEX-CLI (GPT)
 OPENAI_API_KEY=votre_cle_ici
+# Get one at https://openai.com/fr-FR/index/openai-api/
 
 # Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
 # Get one at https://aistudio.google.com/app/apikey
@@ -612,6 +612,7 @@ GOOGLE_API_KEY=votre_cle_ici
 
 # OpenRouter (DeepSeek, etc.)
 OPENROUTER_API_KEY=votre_cle_ici
+# Get one at https://openrouter.ai/settings/keys
 
 """
     env_example_path.write_text(content, encoding="utf-8")
