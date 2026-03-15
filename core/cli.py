@@ -699,7 +699,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
         )
 
         return ChatGoogleGenerativeAI(
-            model=model,
+            model_name=model,
             timeout=60,
             max_retries=2
         )
