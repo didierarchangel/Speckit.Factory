@@ -62,6 +62,51 @@ def extract_task_keywords(task_name: str) -> list[str]:
     keywords = [w for w in raw_words if w and len(w) >= 3 and w not in _BOILERPLATE_WORDS]
     return keywords
 
+# ─── 🛡️ LLM Quota Error Detection ─────────────────────────────────────────────────
+
+def is_quota_error(e: Exception) -> bool:
+    """Détecte si une exception est due à un quota LLM dépassé.
+    
+    Patterns détectés:
+    - RESOURCE_EXHAUSTED: Google Gemini API
+    - 429: Rate limit HTTP
+    - QUOTA: Quota Error
+    - RATE_LIMIT: Generic rate limit
+    """
+    error_str = str(e).upper()
+    quota_indicators = ["RESOURCE_EXHAUSTED", "429", "QUOTA", "RATE_LIMIT"]
+    return any(indicator in error_str for indicator in quota_indicators)
+
+def extract_retry_delay(e: Exception) -> int:
+    """Extrait le délai de retry recommandé de l'erreur LLM.
+    
+    Exemple:
+        "retryDelay': '60s'" → 60
+        "Retry-After: 300" → 300
+    
+    Returns:
+        Délai en secondes (default: 60s)
+    """
+    error_str = str(e)
+    
+    # Pattern 1: Google Gemini format
+    match = re.search(r"retryDelay['\"]?\s*:\s*['\"]?(\d+)s?['\"]?", error_str)
+    if match:
+        return int(match.group(1))
+    
+    # Pattern 2: HTTP Retry-After header
+    match = re.search(r"Retry-After['\"]?\s*:\s*(\d+)", error_str)
+    if match:
+        return int(match.group(1))
+    
+    # Pattern 3: Generic number in seconds
+    match = re.search(r"retry.*?(\d+)\s*(?:second|sec|s)?", error_str, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    
+    # Default: 60 seconds
+    return 60
+
 # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
 class AgentState(TypedDict):
