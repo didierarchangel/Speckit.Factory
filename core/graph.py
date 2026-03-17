@@ -3212,7 +3212,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         if has_missing_modules:
             # 🛡️ PRIORITÉ 1: Casser la boucle structurelle immédiatement
             # Après 1 tentative échouée d'installation, déléguer à verify_node
-            dep_attempts = state.get("dep_attempts", 0)
+            dep_attempts = state.get("dep_install_attempts", 0)
             if dep_attempts >= 1:
                 logger.error(f"🛑 ABORT: Tentative d'installation des dépendances #{dep_attempts} a échoué. Boucle détectée. Route vers verify_node.")
                 return "verify_node"
