@@ -3107,10 +3107,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         
         # 🛡️ PROTECTION NIVEAU 1B: Détection de boucle infinie (même état répété)
         current_state_key = f"{state.get('validation_status', 'UNKNOWN')}|{len(state.get('missing_modules', []))}|{state.get('error_count', 0)}"
-        if state.get("state_history") is None:
-            state["state_history"] = []
         
-        state_history = state["state_history"]
+        # Initialize state_history if None (safe handling of Optional type)
+        state_history = state.get("state_history") or []
+        
         if state_history and state_history[-1] == current_state_key:
             repeats = state.get("repeated_state_count", 0) + 1
             state["repeated_state_count"] = repeats
@@ -3131,7 +3131,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         
         # ─────────────────────────────────────────────────────────────
         
-        # �️ PROTECTION ARCHITECTURALE: PRIORITÉ 4 FIX
+        # PROTECTION ARCHITECTURALE: PRIORITÉ 4 FIX
         # Hiérarchie de vérité stricte: SCANNER > NPM > LLM
         # 1. SCANNER: Vérité absolue (file_tree, filesystem scans)
         # 2. NPM: Source primaire (package.json, node_modules, npm ls)
