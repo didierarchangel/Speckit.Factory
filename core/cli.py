@@ -44,6 +44,10 @@ logging.getLogger("langchain_core").setLevel(logging.ERROR)
 # Configuration des chemins par défaut
 DEFAULT_PROJECT_NAME = "SpecKit-App"
 
+# 🛡️ CIRCUIT BREAKER - Global LLM Failure Threshold
+MAX_LLM_FAILURES = 2
+MAX_GRAPH_FAILURES = 3
+
 # ============================================================
 # 🔧 ROUTEURS BACKEND & FRONTEND (GÉNÉRATEURS)
 # ============================================================
@@ -1208,17 +1212,59 @@ def run(task, component, provider, model, instruction):
             "subtask_checklist": subtask_checklist,
             "code_map": semantic_map,
             "file_tree": file_tree,
-            "existing_code_snapshot": ""
+            "existing_code_snapshot": "",
+            "llm_failures": 0,
+            "fatal_error": False,
+            "fatal_error_reason": ""
         }
         
-        # Exécution du graphe
+        # Exécution du graphe avec circuit breaker LLM
         final_state = initial_state
-        for output in graph_manager.app.stream(initial_state):  # type: ignore
-            for node_name, result in output.items():
-                if result is not None:  # Defensive: ensure node returns a dict
-                    final_state.update(result)
-                else:
-                    logger.warning(f"⚠️ Node {node_name} returned None instead of dict")
+        graph_iteration = 0
+        try:
+            for output in graph_manager.app.stream(initial_state):  # type: ignore
+                graph_iteration += 1
+                
+                # 🛡️ CIRCUIT BREAKER : Check LLM failure threshold
+                llm_failures = final_state.get("llm_failures", 0)
+                if llm_failures >= MAX_LLM_FAILURES:
+                    click.echo(f"\n🛑 Circuit breaker activé : {llm_failures} défaillances LLM détectées.")
+                    click.echo("⛔ Arrêt immédiat du graphe.")
+                    final_state["fatal_error"] = True
+                    final_state["fatal_error_reason"] = f"LLM failures exceeded ({llm_failures}/{MAX_LLM_FAILURES})"
+                    break
+                
+                # Check fatal error flag from nodes
+                if final_state.get("fatal_error", False):
+                    click.echo(f"\n⛔ Erreur fatale détectée : {final_state.get('fatal_error_reason', 'Raison inconnue')}")
+                    break
+                
+                for node_name, result in output.items():
+                    if result is not None:  # Defensive: ensure node returns a dict
+                        final_state.update(result)
+                    else:
+                        logger.warning(f"⚠️ Node {node_name} returned None instead of dict")
+        except Exception as graph_error:
+            # Capture errors from graph execution
+            error_str = str(graph_error).upper()
+            click.echo(f"\n💥 Erreur critique pendant l'exécution du graphe : {graph_error}")
+            
+            # Check if this is an LLM-related error
+            if any(kw in error_str for kw in ["RESOURCE_EXHAUSTED", "QUOTA", "429", "RATE_LIMIT"]):
+                click.echo("\n⛔ RESSOURCE ÉPUISÉE - LLM API Quota dépassé")
+                click.echo("💡 Attendez quelques minutes avant de réessayer.")
+                final_state["fatal_error"] = True
+                final_state["fatal_error_reason"] = "LLM Quota exhausted (RESOURCE_EXHAUSTED)"
+                final_state["llm_failures"] = MAX_LLM_FAILURES  # Mark as critical failure
+            elif any(kw in error_str for kw in ["AUTHENTICATION", "API_KEY", "401", "UNAUTHORIZED"]):
+                click.echo("\n⛔ AUTHENTIFICATION ÉCHOUÉE - Clé API invalide ou expirée")
+                click.echo(f"💡 Vérifiez votre clé API pour le provider: {provider}")
+                final_state["fatal_error"] = True
+                final_state["fatal_error_reason"] = "LLM Authentication failed"
+            else:
+                # Generic error
+                final_state["last_error"] = str(graph_error)
+                final_state["llm_failures"] = final_state.get("llm_failures", 0) + 1
         
         # 5. Ground Truth : vérification réelle sur disque avant validation finale
         gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")  # type: ignore
@@ -1229,6 +1275,16 @@ def run(task, component, provider, model, instruction):
         
         task_complete = (checked_count == total_count) if total_count > 0 else True
         audit_approved = final_state.get("validation_status") == "APPROUVÉ"
+        fatal_error = final_state.get("fatal_error", False)
+        
+        # 🛑 Check if run was aborted due to fatal error
+        if fatal_error:
+            click.echo("\n" + "!"*50)
+            click.echo("🛑 EXÉCUTION INTERROMPUE (ERREUR FATALE)")
+            click.echo("!"*50)
+            click.echo(f"Raison : {final_state.get('fatal_error_reason', 'Raison inconnue')}")
+            click.echo("!"*50 + "\n")
+            return
         
         if audit_approved and task_complete:
             click.echo("\n" + "="*50)
@@ -1292,16 +1348,32 @@ def run(task, component, provider, model, instruction):
             click.echo("!"*50 + "\n")
         
     except Exception as e:
-        error_msg = str(e).lower()
-        # Détection des erreurs de Quota / Auth (LangChain / Provider specific)
-        if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
-            click.echo("\n⚠️  [Modal Quota Reached]")
-            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+        error_msg = str(e).upper()
+        
+        # 🛡️ CRITICAL ERROR HANDLING - LLM Down Detection
+        if "RESOURCE_EXHAUSTED" in error_msg or "QUOTA" in error_msg:
+            click.echo("\n" + "⛔"*25)
+            click.echo("⛔ LLM QUOTA DÉPASSÉ - ARRÊT IMMÉDIAT")
+            click.echo("⛔"*25)
+            click.echo(f"Provider : {provider}")
+            click.echo("Opération : Suspendre pour 24h ou changer de provider")
+            click.echo("Alternatives : --provider anthropic, --provider openai, --provider deepseek")
+            click.echo("⛔"*25 + "\n")
+            
+        elif "AUTHENTICATION" in error_msg or "API_KEY" in error_msg or "401" in error_msg:
+            click.echo("\n" + "⚠️ "*25)
+            click.echo("⚠️  AUTHENTIFICATION ÉCHOUÉE")
+            click.echo("⚠️ "*25)
+            click.echo(f"Provider : {provider}")
+            click.echo("Action : Vérifiez votre clé API dans .env")
+            click.echo("⚠️ "*25 + "\n")
+            
         else:
-            click.echo(f"❌ ERREUR lors de l'exécution : {e}")
-            logger.exception("Détails de l'erreur :")
+            click.echo(f"\n❌ ERREUR lors de l'exécution : {e}")
+            logger.exception("Détails complets de l'erreur :")
+            
     finally:
-        # 5. Libération du verrou
+        # 5. Libération du verrou (toujours exécuté, même en cas d'erreur)
         validator.release_task_lock(target_id)
 
 if __name__ == "__main__":
