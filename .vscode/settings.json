@@ -20,5 +20,21 @@
   "python.formatting.provider": "black",
   "editor.formatOnSave": true,
   "pylance.analysis.typeCheckingMode": "basic",
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "// ─── TypeScript Configuration ─────────────────────────────────": "",
+  "js/ts.tsdk": "node_modules/typescript/lib",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+  "// Ignore 'Cannot find module' errors in template files - they resolve on scaffolding": "",
+  "typescript.diagnostics.ignoredCodes": [
+    2307
+  ],
+  "[typescript]": {
+    "editor.formatOnSave": true
+  },
+  "// Search/exclude configuration": "",
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/node_modules": true,
+    "**/.venv": true
+  }
 }

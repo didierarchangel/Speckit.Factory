@@ -99,6 +99,91 @@ pip install uv
 
 ---
 
+## 🗄️ Prérequis: Configuration de la Base de Données
+
+### ⚠️ IMPORTANT pour PostgreSQL / Supabase
+
+Si vous planifiez d'utiliser **PostgreSQL (local) ou Supabase (cloud)** comme base de données backend, **vous DEVEZ créer et configurer la base AVANT toute utilisation de Speckit.Factory**.
+
+Cette étape est **obligatoire et ne peut pas être automatisée** par Speckit.
+
+#### 🟢 Si vous choisissez MongoDB
+✅ **Aucune préparation requise** - MongoDB démarre automatiquement localement ou via Atlas dans la configuration.
+
+#### 🔴 Si vous choisissez PostgreSQL (Local)
+Avant de lancer `speckit init`, vous DEVEZ :
+
+1. **Installer PostgreSQL localement** (ou utiliser Docker)
+   ```bash
+   # macOS
+   brew install postgresql
+   
+   # Windows - Télécharger depuis https://www.postgresql.org/download/windows/
+   
+   # Linux (Ubuntu/Debian)
+   sudo apt-get install postgresql postgresql-contrib
+   ```
+
+2. **Démarrer le serveur PostgreSQL**
+   ```bash
+   # macOS / Linux
+   pg_ctl -D /usr/local/var/postgres start
+   
+   # Windows - le service démarre automatiquement
+   ```
+
+3. **Créer votre base de données**
+   ```bash
+   createdb mon_projet_db
+   # ou via psql:
+   psql -U postgres
+   postgres=# CREATE DATABASE mon_projet_db;
+   ```
+
+4. **Préparer vos identifiants**
+   - Host: `localhost` (ou votre serveur)
+   - Port: `5432`
+   - Username: `postgres` (par défaut) ou votre utilisateur
+   - Password: (le password que vous avez défini)
+   - Database name: `mon_projet_db`
+
+> [!WARNING]
+> **Speckit attendra ces identifiants lors de la sélection de PostgreSQL dans `speckit init`.** Si la BD n'existe pas, les migrations Prisma échoueront.
+
+#### 🟦 Si vous choisissez Supabase (Cloud PostgreSQL)
+Avant de lancer `speckit init`, vous DEVEZ :
+
+1. **Créer un compte Supabase** : https://supabase.com
+
+2. **Créer un nouveau projet**
+   - Notez votre **Project ID** (visible dans les URL Supabase)
+   - Le password de la BD sera généré automatiquement par Supabase
+
+3. **Préparer vos identifiants Supabase**
+   - Database URL: `postgresql://postgres.{PROJECT_ID}:{PASSWORD}@db.{PROJECT_ID}.supabase.co:5432/postgres`
+   - Supabase Project ID: `{PROJECT_ID}`
+   - Supabase API Key: Visible dans **Settings → API → Project API keys**
+   - Supabase URL: `https://{PROJECT_ID}.supabase.co`
+
+> [!TIP]
+> Pour Supabase, tous les identifiants sont gérés via le dashboard cloud. Il n'y a rien à installer localement.
+
+#### ✅ Checklist Avant `speckit init`
+
+```
+☑️ Si MongoDB → Prêt (aucun setup)
+☑️ Si PostgreSQL Local → BD créée ET serveur démarré
+☑️ Si Supabase → Compte créé + API keys en main
+```
+
+Si vous oubliez cette étape, vous verrez cette erreur lors de `npm run prisma:setup`:
+
+```
+❌ Error: Can't reach database server at `localhost:5432`
+```
+
+---
+
 ## ⚡ Démarrage Ultra Rapide (5 Minutes)
 
 ### Étape 1: Initialiser le projet

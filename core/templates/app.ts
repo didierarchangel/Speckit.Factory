@@ -1,6 +1,11 @@
+// @ts-nocheck
 /**
  * Backend Express.js - Application Principale
  * Configuration complète avec Express, TypeScript, JWT, Prisma/Mongoose
+ * 
+ * TEMPLATE NOTICE: This file is copied to backend/src/app.ts during project scaffolding.
+ * Module resolution errors shown here will resolve once npm dependencies are installed
+ * in the backend folder (see backend/package.json for all required packages).
  * 
  * Utilisation :
  *   npm run dev    # Développement avec hot-reload

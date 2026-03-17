@@ -5,7 +5,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import TypedDict, List
+from typing import TypedDict, List, Any
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
@@ -120,6 +120,28 @@ class AgentState(TypedDict):
     
     # Keywords sémantiques extraits du task ID (pour le Context Filtering)
     task_keywords: List[str]
+    
+    # Clés dynamiques pour le flux de dépendances et validation (mode LLM post-généré)
+    dep_install_attempts: int  # Tracking attempts to avoid infinite loops
+    scanner_missing_modules: List[str]  # Modules detected as missing by scanner
+    attempted_installs: List[str]  # Modules already attempted for installation
+    installed_modules: List[str]  # Modules that were successfully installed
+    dependency_cycles: int  # Count of circular dependency detection cycles
+    graph_steps: int  # Total number of orchestration steps executed
+    
+    # Status tracking from various guard/validation nodes
+    arch_guard_status: str  # "PASSED", "FAILED"
+    path_guard_status: str  # "PASSED", "WARNED", "BLOCKED", "EMPTY"
+    path_guard_issues: List[dict]  # Path validation issues detected
+    esm_status: str  # ESM compatibility status
+    esm_resolver_status: str  # ESM import resolver status
+    typescript_errors: List[str]  # TypeScript compilation errors
+    typescript_validation_status: str  # TypeScript validation result
+    
+    # Snapshot tracking for diff management
+    snapshot_before: dict  # Project state before persistence
+    snapshot_after: dict  # Project state after persistence
+    file_diff: dict  # Diff summary between snapshots
 
 
 class SpecGraphManager:
@@ -158,7 +180,7 @@ class SpecGraphManager:
         if count > 0:
             logger.info(f"📁 Structure de dossiers garantie ({count} dossiers créés).")
 
-    def _extract_target_module(self, task_id: str) -> str:
+    def _extract_target_module(self, task_id: str) -> str | None:
         """Extrait le module cible (backend/frontend/mobile) du task ID.
         
         Exemples:
@@ -166,6 +188,8 @@ class SpecGraphManager:
         - "03_setup_frontend" → "frontend"
         - "04_setup_mobile" → "mobile"
         - "05_feature_dashboard" → None (utilise tous les modules)
+        
+        Returns: str (module name) or None (all modules)
         """
         import re
         # Pattern: 02_setup_backend, 03_setup_frontend, etc.
@@ -215,7 +239,6 @@ class SpecGraphManager:
         from utils.file_manager import FileManager
         fm = FileManager(str(self.root))
         return fm.detect_framework()
-        return "tsc"
 
     def _get_nextjs_router_type(self) -> str:
         """Détecte le type de router Next.js: 'app' (App Router) ou 'pages' (Pages Router).
@@ -447,7 +470,7 @@ class SpecGraphManager:
         prompt = state.get("user_instruction") or state["target_task"]
         
         try:
-            design_result = design_engine.generate(prompt)
+            design_result: dict[str, Any] = design_engine.generate(prompt)
             # Ensure tailwind rules are always present even if empty
             if "tailwind" not in design_result:
                 design_result["tailwind"] = {}
@@ -522,6 +545,7 @@ class SpecGraphManager:
                 # Hard timeout de 90 secondes sur l'appel LLM
                 raw_output = future.result(timeout=90)
 
+            assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentAnalysisOutput)
             # On convertit le dict JSON en string formatée pour l'injecter au noeud suivant
             analysis_str = (
@@ -875,6 +899,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
                         raise
 
+            assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             new_code = result.get("code", "")
             
@@ -961,7 +986,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             return {"path_guard_status": "EMPTY"}
         
         # Instancier FileManager pour accéder aux méthodes de validation
-        fm = FileManager(self.root)
+        fm = FileManager(str(self.root))
         
         # Extraire tous les chemins du code
         file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
@@ -1066,10 +1091,10 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         code = state.get("code_to_verify", "")
         if not code:
             state["validation_status"] = "EMPTY_CODE"
-            return state
+            return state  # type: ignore[return-value]
         
         # Snapshot AVANT
-        fm = FileManager(self.root)
+        fm = FileManager(str(self.root))
         snapshot_before = fm.snapshot_project_state("before_persist")
         logger.info(f"📸 Project snapshot before: {snapshot_before['file_count']} files, {snapshot_before['total_size']} bytes")
         
@@ -1126,7 +1151,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             "file_diff": file_diff
         }
 
-    def scaffold_node(self, state: AgentState) -> dict:
+    def esm_scaffold_node(self, state: AgentState) -> dict:
         """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés.
         
         Remplace automatiquement :
@@ -1628,7 +1653,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 '''
                 main_path.write_text(main_template, encoding="utf-8")
                 
-        return state
+        return state  # type: ignore[return-value]
 
     def typescript_validate_node(self, state: AgentState) -> dict:
         """Nœud : Validation TypeScript des fichiers générés (phase post-persist).
@@ -1848,7 +1873,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             state["missing_modules"] = []
         
         # 🛡️ TOUJOURS retourner state
-        return state
+        return state  # type: ignore[return-value]
 
     def install_deps_node(self, state: AgentState) -> dict:
         """Nœud : Installation des dépendances npm — détection statique (scanner) SEULE source de vérité."""
@@ -1863,7 +1888,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         if attempts >= 1:
             logger.warning("⚠️ Dependency install already attempted. Skipping to prevent loops.")
             state["missing_modules"] = []
-            return state
+            return state  # type: ignore[return-value]
 
         state["dep_install_attempts"] = attempts + 1
         
@@ -1880,13 +1905,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             else:
                 logger.warning("⚠️ Aucun package.json trouvé")
                 state["missing_modules"] = []
-                return state
+                return state  # type: ignore[return-value]
         
         pkg_path = target_dir / "package.json"
         if not pkg_path.exists():
             logger.warning(f"⚠️ package.json non trouvé dans {target_dir}")
             state["missing_modules"] = []
-            return state
+            return state  # type: ignore[return-value]
         
         # 🔴 DÉTECTION STATIQUE: Scanner = SOURCE DE VÉRITÉ
         # Le scanner analyse les imports RÉELLEMENT utilisés dans le code
@@ -1914,6 +1939,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         import shutil
         npm_path = shutil.which("npm") or shutil.which("npm.cmd")
         
+        # 🛡️ Guard: Ensure npm is available before attempting installation
+        if not npm_path:
+            logger.error("❌ npm/npm.cmd not found in PATH. Cannot proceed with package validation.")
+            state["missing_modules"] = []
+            state["attempted_installs"] = state.get("attempted_installs", []) + list(set(missing_from_scanner))
+            return state  # type: ignore[return-value]
+        
         # Vérifier si on part de 0 (scaffold tout frais)
         needs_base_install = not (target_dir / "node_modules").exists()
         
@@ -1922,7 +1954,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         if not missing_from_scanner and not needs_base_install:
             logger.info("✅ Scanner confirme : aucune dépendance manquante et node_modules présent.")
             state["missing_modules"] = []
-            return state
+            return state  # type: ignore[return-value]
         
         # ─── 🛡️ ANTI-BOUCLE NIVEAU 2: Filtrer les modules déjà tentés ───
         attempted = state.get("attempted_installs", [])
@@ -1932,7 +1964,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             logger.info(f"⚠️ Tous les modules ont déjà été tentés: {missing_from_scanner}")
             logger.warning("🛑 Arrêt des tentatives d'installation pour éviter la boucle infinie.")
             state["missing_modules"] = []
-            return state
+            return state  # type: ignore[return-value]
         
         if len(filtered_missing) < len(missing_from_scanner):
             skipped = set(missing_from_scanner) - set(filtered_missing)
@@ -1942,6 +1974,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         valid_packages = []
         for pkg in filtered_missing:
             try:
+                assert npm_path is not None, "npm_path should not be None (guarded above)"
                 view_res = subprocess.run(
                     [npm_path, "view", pkg, "version"],
                     capture_output=True,
@@ -1958,7 +1991,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         if not valid_packages and not needs_base_install:
             logger.warning("❌ Aucun package valide à installer.")
             state["missing_modules"] = []
-            return state
+            return state  # type: ignore[return-value]
 
         if needs_base_install and not valid_packages:
             logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
@@ -1974,7 +2007,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             if not npm_path:
                 logger.error("❌ npm not found in PATH")
                 state["missing_modules"] = []
-                return state
+                return state  # type: ignore[return-value]
 
             result = subprocess.run(
                 install_args,
@@ -2021,7 +2054,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             # Même en cas d'erreur, effacer pour éviter les boucles
             state["missing_modules"] = []
 
-        return state
+        return state  # type: ignore[return-value]
 
 
     def verify_node(self, state: AgentState) -> dict:
@@ -2037,7 +2070,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             else:
                 state["validation_status"] = "REJETÉ"
                 state["alertes"] = "Limite de tentatives atteinte et la structure demandée n'est pas conforme."
-            return state
+            return state  # type: ignore[return-value]
 
         # Rafraîchir le file_tree depuis le disque pour un audit précis
         import os
@@ -2146,6 +2179,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
                         raise
             
+            assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
@@ -2227,7 +2261,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             state["validation_status"] = "REJETÉ"
             state["feedback_correction"] = str(e)
             state["error_count"] = state.get("error_count", 0) + 1
-            return state
+            return state  # type: ignore[return-value]
 
     def task_enforcer_node(self, state: AgentState) -> dict:
         """Nœud de vérification structurelle."""
@@ -2270,6 +2304,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
                         raise
             
+            assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
             # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
@@ -2382,6 +2417,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
                         raise
             
+            assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
             sanitized_fix, written = self._persist_code_to_disk(result.get("code", ""))
             merged = self._merge_code(state.get("code_to_verify", ""), sanitized_fix)
