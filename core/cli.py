@@ -832,7 +832,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
         )
 
         return ChatGoogleGenerativeAI(
-            model_name=model,
+            model=model,
             timeout=60,
             max_retries=2
         )
@@ -865,7 +865,9 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatAnthropic(
                 model_name=model,
+                max_tokens_to_sample=1024,
                 timeout=60,
+                max_retries=2,
                 stop=None
             )
 
