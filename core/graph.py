@@ -1103,36 +1103,14 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         logger.info(f"✅ {len(written_paths)} fichiers écrits.")
         
         # ─── ASSURER LES ARTEFACTS OBLIGATOIRES ───
-        # Extraire et créer tout fichier manquant listés dans la checklist
-        required_files = self._extract_required_files(state.get("subtask_checklist", ""))
+        # 🛡️ DÉSACTIVÉ : Ne plus créer les fichiers stub vides
+        # Cela aide les développeurs juniors à ne pas être confus par des fichiers vides/placeholders
+        # required_files = self._extract_required_files(state.get("subtask_checklist", ""))
+        # Les fichiers obligatoires doivent être générés avec du contenu réel, pas des stubs
         
-        # 🛡️ FIX: Do NOT add root-level config files (tsconfig.json, vite.config.ts)
-        # These should only exist in backend/ and frontend/ subdirectories
-        # The .example files are intentionally created at root by cli.py for user reference
-        # but actual working config files must live in their respective modules
-        
-        REQUIRED_BACKEND_FILES = [
-            "backend/package.json",
-            "backend/src/app.ts"
-        ]
-        
-        REQUIRED_FRONTEND_FILES = [
-            "frontend/package.json",
-            "frontend/src/main.tsx"
-        ]
-        
-        # Ajouter les fichiers vitaux selon le module cible
-        target_mod = state.get("target_module", "")
-        if target_mod == "backend":
-            required_files.extend(REQUIRED_BACKEND_FILES)
-        elif target_mod == "frontend":
-            required_files.extend(REQUIRED_FRONTEND_FILES)
-        
-        missing_files = self._ensure_required_artifacts(required_files, written_paths)
-        
-        if missing_files:
-            logger.warning(f"⚠️ Fichiers obligatoires manquants créés : {missing_files}")
-            written_paths.extend(missing_files)
+        required_files = []
+        missing_files = []
+        written_paths.extend(missing_files)
         
         # Snapshot APRÈS
         snapshot_after = fm.snapshot_project_state("after_persist")
