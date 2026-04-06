@@ -7,6 +7,9 @@ from typing import Any, Dict, Iterable, List
 class PatternVisionDetector:
     """Module UI Pattern Detector (Vision) : détecte les tokens visuels."""
 
+    def __init__(self, model: Any = None):
+        self.model = model
+
     BASE_COLORS = {
         "primary": "#2563eb",
         "secondary": "#1e293b",
@@ -40,9 +43,16 @@ class PatternVisionDetector:
         """Analyse le prompt et les métadonnées image pour extraire des tokens de design."""
         
         # 1. Détecter si on est sur un style custom (LLM description/Pinterest reference)
-        is_custom = any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist"])
+        # On force le mode custom si un model est présent pour garantir une vraie IA
+        is_custom = self.model is not None or any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist", "premium", "hospital", "neon", "dark"])
         
-        if is_custom or image_meta:
+        if is_custom and self.model:
+            style = "custom"
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"✨ AI Design Brain activated for prompt: {prompt[:50]}...")
+            tokens = self._extract_tokens_with_llm(prompt)
+        elif is_custom or image_meta:
             style = "custom"
             tokens = self._extract_custom_tokens(prompt, image_meta)
         else:
@@ -140,3 +150,69 @@ class PatternVisionDetector:
         if image_meta:
             candidates.extend(image_meta.get("detected_components", []))
         return sorted(set(candidates))
+
+    def _extract_tokens_with_llm(self, prompt: str) -> Dict[str, Any]:
+        """Utilise le LLM pour imaginer et extraire des tokens de design uniques."""
+        from langchain_core.messages import HumanMessage
+        from langchain_core.output_parsers import JsonOutputParser
+        import logging
+
+        logger = logging.getLogger(__name__)
+        
+        system_instructions = """You are a World-Class UI/UX Designer. Based on the user's vibe description, extract the design tokens.
+        
+        You MUST return a VALID JSON structure following this schema exactly:
+        {
+          "colors": {
+            "primary": "HEX",
+            "secondary": "HEX",
+            "accent": "HEX",
+            "background": "HEX",
+            "surface": "HEX",
+            "success": "#059669",
+            "warning": "#d97706",
+            "error": "#dc2626",
+            "on_primary": "#ffffff",
+            "on_background": "HEX"
+          },
+          "typography": {
+            "font_family": "FontName, sans-serif",
+            "weights": {"regular": 400, "medium": 500, "bold": 700},
+            "scale": {"h1": "3rem", "h2": "2.25rem", "body": "1rem"}
+          },
+          "tokens": {
+            "radius": {"card": "rem", "button": "rem", "input": "rem"},
+            "shadow": {"soft": "CSS Shadow", "elevated": "CSS Shadow", "glass": "CSS Shadow"},
+            "spacing": {"small": "8px", "medium": "16px", "large": "32px"}
+          }
+        }
+        
+        Be creative! Use professional color palettes (not just blue/gray). 
+        If the user wants 'Cyberpunk', use Neons. If 'Premium', use Golds/Deep Greens/Dark Grays.
+        Return ONLY the JSON. No markdown backticks, no comments."""
+
+        user_prompt = f"Description de la Vibe Design : \"{prompt}\".\nExtraite les tokens maintenant."
+        
+        try:
+            # 🛡️ Direct LLM call with StrOutputParser for safety then manual parse
+            message = [HumanMessage(content=system_instructions + "\n\n" + user_prompt)]
+            response = self.model.invoke(message)
+            raw_content = response.content
+            
+            # Parsing JSON
+            import re
+            import json
+            # Nettoyage si jamais l'IA met des backticks
+            json_match = re.search(r"({.*})", raw_content.replace("\n", " "), re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                tokens = json.loads(json_str)
+                logger.info("✅ Vibe Design Tokens successfully extracted by AI.")
+                return tokens
+            else:
+                logger.warning("⚠️ AI Design Brain returned invalid format. Falling back to regex.")
+                return self._extract_custom_tokens(prompt, None)
+                
+        except Exception as e:
+            logger.error(f"❌ AI Design extraction failed: {e}. Falling back.")
+            return self._extract_custom_tokens(prompt, None)

@@ -1114,8 +1114,14 @@ def vibe_design(provider, model, prompt):
         # Sauvegarder la constitution mise à jour
         const_path.write_text(state["constitution_content"], encoding="utf-8")
         
-        click.echo("\n✅ VIBE DESIGN EXTRAIT ! Tokens sauvegardés et Constitution mise à jour.")
-        click.echo("👉 Prochaine étape : `speckit plan` pour générer la feuille de route.")
+        click.echo("")
+        click.secho("✨ [VIBE DESIGN MAKER] EXTRACTION RÉUSSIE !", fg="green", bold=True)
+        click.echo("✅ Tokens visuels sauvegardés dans `design/tokens.yaml`.")
+        click.echo("✅ Constitution enrichie avec l'identité du projet.")
+        click.echo("")
+        click.secho("👉 PROCHAINE ÉTAPE :", fg="cyan", bold=True)
+        click.echo("   Exécutez `speckit plan` pour générer la feuille de route basée sur ce nouveau design.")
+        click.echo("")
     except Exception as e:
         click.echo(f"❌ Erreur : {e}")
         import traceback

@@ -218,11 +218,11 @@ class SpecGraphManager:
         
         self.arch_guard = ArchitectureGuard()
         self.project_enhancer = ProjectEnhancer(model=self.model, project_root=self.root)
-        self.component_improver = ComponentImprover()
-        self.pattern_vision_detector = PatternVisionDetector()
+        self.component_improver = ComponentImprover(model=self.model)
+        self.pattern_vision_detector = PatternVisionDetector(model=self.model)
         self.design_system_generator = DesignSystemGenerator()
-        self.ux_flow_designer = UXFlowDesigner()
-        self.constitution_generator = ConstitutionGenerator()
+        self.ux_flow_designer = UXFlowDesigner(model=self.model)
+        self.constitution_generator = ConstitutionGenerator(model=self.model)
 
         
         # Initialisation du graphe
