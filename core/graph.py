@@ -289,7 +289,7 @@ class SpecGraphManager:
 
     def _extract_component_candidates(self, state: AgentState) -> List[str]:
         """Extrait les composants mentionnés dans l'instruction de l'utilisateur."""
-        raw = f\"{state.get('user_instruction', '')}\\n{state.get('target_task', '')}\"
+        raw = f"{state.get('user_instruction', '')}\n{state.get('target_task', '')}"
         cleaned = raw.replace("•", "\n").replace(";", "\n").replace(",", "\n")
         candidates = []
         for line in cleaned.splitlines():
