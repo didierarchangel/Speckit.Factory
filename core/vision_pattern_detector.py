@@ -37,19 +37,75 @@ class PatternVisionDetector:
         prompt: str,
         image_meta: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        style = self._infer_style(prompt, image_meta)
-        color_palette = self._build_palette(style)
-        tokens = {
-            "colors": color_palette,
-            "typography": self.BASE_TYPO,
-            "tokens": self.BASE_TOKENS,
-        }
+        """Analyse le prompt et les métadonnées image pour extraire des tokens de design."""
+        
+        # 1. Détecter si on est sur un style custom (LLM description/Pinterest reference)
+        is_custom = any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist"])
+        
+        if is_custom or image_meta:
+            style = "custom"
+            tokens = self._extract_custom_tokens(prompt, image_meta)
+        else:
+            style = self._infer_style(prompt, image_meta)
+            color_palette = self._build_palette(style)
+            tokens = {
+                "colors": color_palette,
+                "typography": self.BASE_TYPO,
+                "tokens": self.BASE_TOKENS,
+            }
+            
         components = self._extract_components(prompt, image_meta)
+        
         return {
             "style": style,
             "tokens": tokens,
             "components": components,
             "image_metadata": image_meta or {},
+        }
+
+    def _extract_custom_tokens(self, prompt: str, image_meta: dict | None) -> Dict[str, Any]:
+        """Extrait des tokens spécifiques à partir d'une description textuelle ou meta image."""
+        import re
+        
+        # Initialisation avec les bases
+        palette = dict(self.BASE_COLORS)
+        radius = dict(self.BASE_TOKENS["radius"])
+        
+        lower_prompt = prompt.lower()
+        
+        # -- 🎨 Couleurs --
+        # Détection de codes Hex
+        hex_colors = re.findall(r'#([A-Fa-f0-9]{3,6})', prompt)
+        if hex_colors:
+            if len(hex_colors) >= 1: palette["primary"] = f"#{hex_colors[0]}"
+            if len(hex_colors) >= 2: palette["accent"] = f"#{hex_colors[1]}"
+            if len(hex_colors) >= 3: palette["background"] = f"#{hex_colors[2]}"
+
+        # Mots clés de couleurs
+        if "glass" in lower_prompt or "glassmorphism" in lower_prompt:
+            palette["surface"] = "rgba(255, 255, 255, 0.1)"
+            palette["on_background"] = "#ffffff"
+        if "dark" in lower_prompt or "black" in lower_prompt:
+            palette["background"] = "#0f172a"
+            palette["surface"] = "#1e293b"
+            palette["on_background"] = "#f8fafc"
+
+        # -- 📐 Radius --
+        if any(kw in lower_prompt for kw in ["rounded", "soft", "organic"]):
+            radius["card"] = "1.5rem"
+            radius["button"] = "999px"
+        elif any(kw in lower_prompt for kw in ["sharp", "square", "brutalist"]):
+            radius["card"] = "0px"
+            radius["button"] = "0px"
+
+        return {
+            "colors": palette,
+            "typography": self.BASE_TYPO,
+            "tokens": {
+                "radius": radius,
+                "shadow": self.BASE_TOKENS["shadow"],
+                "spacing": self.BASE_TOKENS["spacing"],
+            }
         }
 
     def _infer_style(self, prompt: str, image_meta: Dict[str, Any] | None) -> str:

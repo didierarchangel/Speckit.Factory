@@ -21,6 +21,18 @@ L'une des grandes forces de Speckit.Factory réside dans son architecture multi-
 
 ---
 
+### 🌈 Le "Vibe-Design" (Style Figma Maker)
+
+Speckit.Factory intègre un moteur de **Design Intelligence** qui vous permet de définir l'esthétique de votre application à partir d'une simple inspiration.
+
+*   **Vibe-Driven Development** : Fournissez une référence visuelle (Lien Pinterest, Image) ou une **description UI détaillée (ex: issue de ChatGPT)**.
+*   **Extraction de Pattern** : L'IA analyse votre "Vibe" (couleurs #hex, radius, ombres, typographie) et génère un **Custom Design Pattern** unique.
+*   **Cohérence Absolue** : Ce pattern est persisté dans `design/dataset/custom_pattern.json`. Chaque composant généré par la suite (boutons, cartes, headers) héritera automatiquement de cette identité visuelle pour une harmonie totale.
+
+> **Exemple d'astuce :** Copiez-collez une description de design incroyable trouvée sur un LLM et demandez à Speckit : *"Utilise ce style : [votre description]"*.
+
+---
+
 **Voici comment ça marche:**
 
 ```text

@@ -159,19 +159,18 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 ---
  
  ## 5. 🎨 DESIGN CONSTITUTION (INTELLIGENCE GRAPHIQUE)
- L'identité visuelle et l'expérience utilisateur sont pilotées par l'agent `GraphicDesign`. 
+ L'identité visuelle et l'expérience utilisateur sont pilotées par l'agent `GraphicDesign` et basées sur l'extraction d'intelligence visuelle (Type "Figma Maker"). 
  
  ### 5.1 Principes de Design
- * **Clarté & Minimalisme** : Interfaces épurées, focus sur la hiérarchie de l'information.
+ * **Design Cohérent & Sur Mesure** : Le projet suit un pattern unique extrait des références utilisateur (Pinterest, ChatGPT ou image).
  * **Réactivité (Responsive)** : Utilisation rigoureuse des classes Tailwind pour tous les formats d'écran.
  
- ### 5.2 Systèmes de Design autorisés
- * **Standard-Tailwind** : Pour les interfaces modernes, créatives et standards.
- * **premium (Premium)** : Pour les interfaces professionnelles, tableaux de données complexes et look "Clean & Premium".
+ ### 5.2 Systèmes de Design
+ * **Custom Pattern (Prioritaire)** : Le système de design généré spécifiquement pour ce projet (stocké dans `design/dataset/custom_pattern.json`). TOUS les composants doivent s'y conformer.
+ * **Premium** : Style de repli professionnel, minimaliste et moderne.
  
  ### 5.3 Règles de composants
- * **Layout** : Toujours utiliser `max-w-7xl mx-auto px-6` pour le conteneur principal.
- * **Cartes** : Coins arrondis (`rounded-xl`) et ombres subtiles.
+ * **Extraction de Tokens** : Les couleurs, radius et ombres sont définis dynamiquement par la phase de `Vision Pattern`.
  
  ---
  

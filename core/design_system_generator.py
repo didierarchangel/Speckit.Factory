@@ -12,13 +12,42 @@ class DesignSystemGenerator:
         components_manifest: Dict[str, Any],
         style_name: str = "premium-tailwind",
     ) -> Dict[str, Any]:
+        """Génère le design system complet."""
         ds_components = self._build_components(components_manifest.get("components", []))
+        
+        # Mapping Tailwind simplifié à partir des tokens
+        tailwind_map = self._build_tailwind_map(tokens)
+        
         return {
             "style": style_name,
             "tokens": tokens,
             "components": ds_components,
+            "tailwind": tailwind_map,
             "rules": self._build_rules(),
             "code": self._build_code_examples(ds_components),
+        }
+
+    def _build_tailwind_map(self, tokens: Dict[str, Any]) -> Dict[str, str]:
+        """Transforme les tokens en classes CSS/Tailwind."""
+        colors = tokens.get("colors", {})
+        radius = tokens.get("tokens", {}).get("radius", {})
+        
+        return {
+            "container": f"bg-[{colors.get('background', '#ffffff')}] p-6 rounded-[{radius.get('card', '1rem')}]",
+            "title": f"text-[{colors.get('on_background', '#000000')}] text-3xl font-bold",
+            "button": f"bg-[{colors.get('primary', '#2563eb')}] text-[{colors.get('on_primary', '#ffffff')}] px-4 py-2 rounded-[{radius.get('button', '0.5rem')}]",
+            "card": f"bg-[{colors.get('surface', '#ffffff')}] shadow-xl border border-gray-100 rounded-[{radius.get('card', '1rem')}]"
+        }
+
+    def export_to_pattern(self, ds_manifest: Dict[str, Any]) -> Dict[str, Any]:
+        """Convertit le manifest DS en un format compatible avec 'PatternEngine'."""
+        return {
+            "id": f"custom-{ds_manifest.get('style', 'design')}",
+            "category": "dashboard",
+            "system": "custom",
+            "tailwind": ds_manifest.get("tailwind", {}),
+            "tokens": ds_manifest.get("tokens", {}),
+            "components": ds_manifest.get("components", [])
         }
 
     def _build_components(self, components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

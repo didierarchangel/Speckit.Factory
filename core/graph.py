@@ -217,6 +217,13 @@ class SpecGraphManager:
         self.prompts_dir = Path(__file__).parent.parent / "agents"
         
         self.arch_guard = ArchitectureGuard()
+        self.project_enhancer = ProjectEnhancer(model=self.model, project_root=self.root)
+        self.component_improver = ComponentImprover()
+        self.pattern_vision_detector = PatternVisionDetector()
+        self.design_system_generator = DesignSystemGenerator()
+        self.ux_flow_designer = UXFlowDesigner()
+        self.constitution_generator = ConstitutionGenerator()
+
         
         # Initialisation du graphe
         self.graph_builder = StateGraph(AgentState)
@@ -536,6 +543,103 @@ class SpecGraphManager:
         ]
         task_text = f"{task_name}\n{checklist}".lower()
         return any(re.search(k, task_text) for k in frontend_keywords)
+
+    def analysis_node(self, state: AgentState) -> dict:
+        """Analyse initiale de la demande utilisateur."""
+        logger.info("🔍 Analysis Node: Analyzing user instruction...")
+        instruction = state.get("user_instruction", "")
+        keywords = extract_task_keywords(instruction)
+        
+        # Simulation d'analyse pour le flux initial
+        analysis = f"Analysis of instruction: {instruction[:100]}... Keywords: {', '.join(keywords)}"
+        
+        return {
+            "analysis_output": analysis,
+            "task_keywords": keywords
+        }
+
+    def scaffold_node(self, state: AgentState) -> dict:
+        """Garantit l'arborescence et l'état initial."""
+        logger.info("🏗️ Scaffold Node: Ensuring directory structure...")
+        self._ensure_directory_structure()
+        return {"current_step": "scaffolded"}
+
+    def project_enhancer_node(self, state: AgentState) -> dict:
+        """Enrichit la vision du projet et la stack."""
+        logger.info("✨ Project Enhancer: Enriching project brief...")
+        instruction = state.get("user_instruction", "") or state.get("target_task", "")
+        
+        brief = self.project_enhancer.enhance(instruction)
+        
+        return {"project_brief": brief}
+
+    def component_improver_node(self, state: AgentState) -> dict:
+        """Segmente et améliore la liste des composants."""
+        logger.info("🧩 Component Improver: Segmenting UI components...")
+        instruction = state.get("user_instruction", "") or state.get("target_task", "")
+        
+        # Extraction basique des candidats
+        candidates = re.findall(r"\b(button|card|modal|navbar|sidebar|table|input|form|stats)\b", instruction.lower())
+        manifest = self.component_improver.improve(candidates or ["Dashboard", "Navbar"])
+        
+        return {"component_manifest": manifest}
+
+    def pattern_vision_node(self, state: AgentState) -> dict:
+        """Détecte le style visuel et les tokens."""
+        logger.info("👁️ Vision Pattern: Extracting design tokens...")
+        instruction = state.get("user_instruction", "") or state.get("target_task", "")
+        
+        pattern = self.pattern_vision_detector.analyze(instruction)
+        
+        return {"pattern_vision": pattern}
+
+    def design_system_node(self, state: AgentState) -> dict:
+        """Génère le design system et persiste le pattern si custom."""
+        logger.info("🎨 Design System: Generating manifest and persisting custom patterns...")
+        
+        tokens = state.get("pattern_vision", {}).get("tokens", {})
+        manifest = state.get("component_manifest", {})
+        
+        ds = self.design_system_generator.generate(tokens, manifest)
+        
+        # 🛡️ PERSISTENCE : Save as custom pattern for GraphicDesign to use
+        if state.get("pattern_vision", {}).get("style") == "custom":
+            pattern_data = self.design_system_generator.export_to_pattern(ds)
+            # Utilisation du root du projet pour le storage
+            pattern_path = self.root / "design" / "dataset" / "custom_pattern.json"
+            pattern_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                import json
+                with open(pattern_path, "w", encoding="utf-8") as f:
+                    json.dump(pattern_data, f, indent=4)
+                logger.info(f"💾 Custom pattern saved and persisted to {pattern_path}")
+            except Exception as e:
+                logger.error(f"❌ Impossible de sauvegarder le custom pattern : {e}")
+
+        return {"design_system": ds}
+
+    def ux_flow_node(self, state: AgentState) -> dict:
+        """Définit les flux d'interactions."""
+        logger.info("🌊 UX Flow: Designing interaction flows...")
+        instruction = state.get("user_instruction", "") or state.get("target_task", "")
+        manifest = state.get("component_manifest", {})
+        
+        flow = self.ux_flow_designer.design_flow(instruction, manifest)
+        
+        return {"ux_flow": flow}
+
+    def constitution_generator_node(self, state: AgentState) -> dict:
+        """Compile tout en une Constitution finale."""
+        logger.info("📜 Constitution Generator: Compiling project constitution...")
+        
+        brief = state.get("project_brief", {})
+        ds = state.get("design_system", {})
+        flow = state.get("ux_flow", {})
+        
+        constitution = self.constitution_generator.generate(brief, ds, flow)
+        
+        return {"constitution_content": constitution.get("content", "")}
 
     def GraphicDesign_node(self, state: AgentState) -> dict:
         """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""

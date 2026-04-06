@@ -491,14 +491,9 @@ def init(path, here):
     # Sélection interactive de la Stack
     click.echo("\n🏗️ Configuration de la Stack Technique :")
     
-    design_choices = {
-        "1": "Standard",
-        "2": "premium"
-    }
-    click.echo("--- Style de Design ---")
-    for k, v in design_choices.items(): click.echo(f" {k}) {v}")
-    d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
-    selected_design = design_choices[d_choice]
+    # On impose le style Premium par défaut (Design Intelligence activé)
+    selected_design = "premium"
+    click.echo(f"🎨 Style de Design : {selected_design} (Constitutional Architecture)")
     
     # ============================================================
     # 📱 SÉLECTION FRONTEND EN PREMIER (pour recommandations)

@@ -15,7 +15,7 @@ class ConstitutionManager:
         # Charger le template de base
         self.template_path = Path(__file__).parent / "templates" / "CONSTITUTION.template.md"
 
-    def generate_constitution(self, user_request: str, design_style: str = "Standard") -> str:
+    def generate_constitution(self, user_request: str, design_style: str = "premium") -> str:
         """Produit la Constitution (Architecture, Standards, Stack) à partir d'une demande utilisateur."""
         logger.info(f"Analyse de la demande utilisateur avec style de design {design_style}...")
         

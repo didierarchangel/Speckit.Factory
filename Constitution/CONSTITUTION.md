@@ -24,22 +24,21 @@
 
 ---
 
-## 🎨 Design Constitution
-L'intelligence graphique du projet est pilotée par le subagent `GraphicDesign`.
+## 🎨 Design Constitution (Figma Maker Style)
+L'intelligence graphique du projet est pilotée par le subagent `GraphicDesign` et basée sur l'extraction d'intelligence visuelle sur mesure.
 
 ### Principes Graphiques
-- **Clarté & Minimalisme** : Interfaces épurées, focus sur le contenu.
-- **Réactivité** : Design "Mobile-First" utilisant Tailwind CSS.
-- **Identité Visuelle** :
-  - **Standard** : Basé sur Material Tailwind.
-  - **Premium (premium)** : Palette bleu/blanc, ombres douces, typographie monospacée pour les données numériques.
+- **Design Cohérent & Sur Mesure** : Le projet suit un pattern unique extrait des références utilisateur (Pinterest, ChatGPT ou image).
+- **Réactivité** : Design "Mobile-First" utilisant Tailwind CSS rigoureusement.
+- **Identité Visuelle** : 
+  - **Custom Pattern (Prioritaire)** : Le système de design généré spécifiquement pour ce projet (stocké dans `design/dataset/custom_pattern.json`).
+  - **Premium** : Palette moderne, ombres douces et typographie haute performance.
 
 ### Règles de Mise en Page
 - **Conteneurs** : `max-w-7xl mx-auto px-6`
-- **Espacement des Sections** : `py-16`
-- **Cartes** : `rounded-xl shadow-md p-6` (Standard) ou `rounded-xl shadow-xl border border-gray-100` (Premium).
+- **Extraction de Tokens** : Les couleurs (#hex), le radius et les ombres sont définis dynamiquement par la phase de `Vision Pattern`.
 
-### Couleurs de Référence
-- **Primaire** : `blue-600` / `indigo-600`
-- **Neutre** : `slate-800`
-- **Accent** : `emerald-500` / `indigo-500`
+### Composants Types
+- **Cartes** : `rounded-[radius] shadow-xl border border-gray-100` (Adapté du pattern custom).
+- **Boutons** : Formes et couleurs extraites de l'intelligence visuelle.
+
