@@ -518,8 +518,8 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 
 # RÈGLE 12.1 : CLASSIFICATION DES DÉPENDANCES (STRICTE)
 Tu dois classer les paquets NPM avec rigueur :
-- **Production (`dependencies`)** : express, mongoose, jsonwebtoken, bcryptjs, cors, dotenv, express-validator, morgan, helmet.
-- **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest.
+- **Production (`dependencies`)** : express, mongoose, jsonwebtoken, bcryptjs, cors, dotenv, express-validator, morgan, helmet, axios, react-hook-form, zod, @hookform/resolvers, zustand.
+- **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest, cypress.
 - **TYPES** : TOUT paquet commençant par `@types/` (ex: `@types/express`) **DOIT** être dans `devDependencies`.
 
 # RÈGLE 12.1B : TYPESCRIPT OBLIGATOIRE POUR BACKEND

@@ -80,6 +80,30 @@ class EtapeManager:
             6. Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
             7. Découper le reste en étapes atomiques avec des sous-tâches actionnables (src/, routes/, models/).
             
+            OBLIGATION DE STRUCTURE :
+            Afin de standardiser la qualité des pipelines, tu DOIS inclure (ou adapter) la structure d'étapes suivante pour garantir une architecture de type Web moderne (API + Frontend) complète :
+            - 03_Installation_Dependances_Backend_Core (inclure 'cors', 'dotenv')
+            - 04_Installation_Dependances_Frontend_Core (inclure 'axios', 'react-hook-form', 'zod', '@hookform/resolvers', 'zustand')
+            - 06_Configuration_Outillage_Qualite (inclure 'cypress' pour E2E)
+            - 07_Creation_Structure_Dossiers (inclure backend/src/config, backend/src/tests, frontend/src/api, frontend/src/tests, frontend/src/types)
+            - 08_Configuration_Environnement_Backend (inclure CORS_ORIGIN)
+            - 09_Initialisation_Serveur_Backend (inclure cors() et express.json())
+            - 10_Modelisation_Donnees_MongoDB (Modèles des entités et relations)
+            - 11_Backend_Auth_JWT (Routes login/register, middlewares)
+            - 12_Backend_API_Modules (Routes et controllers métier)
+            - 13_Tests_Backend_API (Tests CRUD/Auth avec Jest et Supertest)
+            - 14_Architecture_Frontend (React Router, Zustand, Axios instance)
+            - 15_API_LAYER (Connexion Backend via axios)
+            - NOUVELLEMENT INTÉGRÉ -> Composants Frontend : Auth (Login/Register/ProtectedRoute), Entités métier (Listes, Forms, Détails), Dashboard
+            - 22_Integration_API (Connecter modules Frontend à API)
+            - 23_Tests_Frontend (Tests unitaires / intégration Vue/React via Vitest)
+            - 24_Test_CORS_Backend & 25_Test_CORS_Frontend (Vérifier cookies JWT/Headers et CORS)
+            - 26_E2E_Tests (Cypress, flow complet tel que login et CRUD basique)
+            - 27_Performance_Optimisation (Lazy loading, pagination)
+            - 28_Securite (Sanitization, XSS, MongoDB protection)
+            - 29_Documentation (README backend/frontend, Swagger)
+            - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
+
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
             - [x] Sous-tâche déjà faite
