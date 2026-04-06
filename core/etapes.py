@@ -104,7 +104,8 @@ class EtapeManager:
             - 28_Securite (Sanitization, XSS, MongoDB protection)
             - 29_Documentation (README backend/frontend, Swagger)
             - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
-            - IMPORTANT : L'étape 00_Vibe_Design_Extraction doit contenir la sous-tâche `- [ ] Extraire les tokens uniques (couleurs Hex, radius, shadows) dans `design/tokens.yaml` via le Vibe Design Maker`.
+            - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
+            - IMPORTANT : Tu DOIS TOUJOURS inclure l'étape `## [ ] 00_Vibe_Design_Extraction` au tout début si elle n'est pas déjà marquée [x]. Elle doit contenir la sous-tâche `- [ ] Extraire les tokens uniques (couleurs Hex, radius, shadows) dans `design/tokens.yaml` via le Vibe Design Maker`.
 
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)

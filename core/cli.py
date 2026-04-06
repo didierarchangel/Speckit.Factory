@@ -1060,11 +1060,13 @@ def component(prompt, provider, model):
         click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
+@click.argument('arg_prompt', required=False)
 @click.option('--provider', help="Provider IA spécifique")
 @click.option('--model', help="Nom du modèle spécifique")
 @click.option('--prompt', help="Description additionnelle de l'ambiance (Vibe)")
-def vibe_design(provider, model, prompt):
+def vibe_design(arg_prompt, provider, model, prompt):
     """[VIBE DESIGN MAKER] Extrait l'identité visuelle (tokens, patterns) du projet."""
+    final_prompt = arg_prompt or prompt
     try:
         from core.graph import AgentState
         llm = get_llm(provider, model)
@@ -1083,7 +1085,7 @@ def vibe_design(provider, model, prompt):
         # État initial pour le design
         state: AgentState = {
             "constitution_content": constitution_content,
-            "user_instruction": prompt or "Générer une identité visuelle premium et cohérente.",
+            "user_instruction": final_prompt or "Générer une identité visuelle premium et cohérente.",
             "target_task": "Vibe Design Extraction",
             "pattern_vision": {},
             "component_manifest": {},
@@ -1111,6 +1113,16 @@ def vibe_design(provider, model, prompt):
         
         click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
         state.update(graph_manager.constitution_generator_node(state)) # type: ignore
+        
+        # 🛡️ PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
+        tokens_path = Path("design/tokens.yaml")
+        tokens_path.parent.mkdir(parents=True, exist_ok=True)
+        import yaml
+        tokens = state.get("pattern_vision", {}).get("tokens", {})
+        if tokens:
+            with open(tokens_path, "w", encoding="utf-8") as f:
+                yaml.dump(tokens, f, default_flow_style=False)
+            click.echo(f" ↳ 💾 Tokens sauvegardés dans {tokens_path}")
         
         # Sauvegarder la constitution mise à jour
         const_path.write_text(state["constitution_content"], encoding="utf-8")
