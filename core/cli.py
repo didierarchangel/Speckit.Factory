@@ -799,7 +799,7 @@ def setup_env(path):
     setup_env_logic(target_path)
     click.echo(f"✅ Fichier .env.example créé dans : {target_path.absolute()}")
 
-def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
+def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, temperature: float = 0.0):
     """Factory LLM multi-provider Speckit."""
 
     # Auto-détection depuis .spec-lock.json
@@ -833,6 +833,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatGoogleGenerativeAI(
             model=model,
+            temperature=temperature,
             timeout=60,
             max_retries=2
         )
@@ -1069,7 +1070,8 @@ def vibe_design(arg_prompt, provider, model, prompt):
     final_prompt = arg_prompt or prompt
     try:
         from core.graph import AgentState
-        llm = get_llm(provider, model)
+        # Temperature=0 pour une extraction de design précise
+        llm = get_llm(provider, model, temperature=0)
         click.echo("🎨 Vibe Design Maker : Extraction de l'identité visuelle...")
         
         # Charger la constitution

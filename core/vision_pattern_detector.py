@@ -46,15 +46,27 @@ class PatternVisionDetector:
         # On force le mode custom si un model est présent pour garantir une vraie IA
         is_custom = self.model is not None or any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist", "premium", "hospital", "neon", "dark"])
         
+        # 🛡️ PROMPT SLICING : Isoler la partie visuelle pour éviter le "brain fog" de l'IA
+        extraction_context = prompt
+        if len(prompt) > 800:
+            import re
+            # Chercher entre l'icône palette et l'icône composants
+            style_section = re.search(r"(🎨 DESCRIPTION VISUELLE.*?)(?=🧩 COMPOSANTS|$)", prompt, re.S | re.I)
+            if style_section:
+                extraction_context = style_section.group(1).strip()
+            else:
+                # Fallback : Si on ne trouve pas de section, on prend les 1000 premiers caractères
+                extraction_context = prompt[:1000]
+
         if is_custom and self.model:
             style = "custom"
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"✨ AI Design Brain activated for prompt: {prompt[:50]}...")
-            tokens = self._extract_tokens_with_llm(prompt)
+            logger.info(f"✨ AI Design Brain activated with sliced context ({len(extraction_context)} chars)...")
+            tokens = self._extract_tokens_with_llm(extraction_context)
         elif is_custom or image_meta:
             style = "custom"
-            tokens = self._extract_custom_tokens(prompt, image_meta)
+            tokens = self._extract_custom_tokens(extraction_context, image_meta)
         else:
             style = self._infer_style(prompt, image_meta)
             color_palette = self._build_palette(style)
@@ -84,12 +96,16 @@ class PatternVisionDetector:
         lower_prompt = prompt.lower()
         
         # -- 🎨 Couleurs --
-        # Détection de codes Hex
+        # Détection de codes Hex (Palette complète)
         hex_colors = re.findall(r'#([A-Fa-f0-9]{3,6})', prompt)
         if hex_colors:
-            if len(hex_colors) >= 1: palette["primary"] = f"#{hex_colors[0]}"
-            if len(hex_colors) >= 2: palette["accent"] = f"#{hex_colors[1]}"
-            if len(hex_colors) >= 3: palette["background"] = f"#{hex_colors[2]}"
+            keys = ["primary", "secondary", "accent", "background", "surface", "success", "warning", "error"]
+            for i, hex_code in enumerate(hex_colors[:len(keys)]):
+                palette[keys[i]] = f"#{hex_code}"
+            
+            # Auto-correction spécifique pour la version sans IA
+            if len(hex_colors) >= 1: palette["on_primary"] = "#ffffff"
+            if len(hex_colors) >= 4: palette["on_background"] = "#ffffff" if hex_colors[3].startswith(("0", "1", "2")) else "#0f172a"
 
         # Mots clés de couleurs
         if "glass" in lower_prompt or "glassmorphism" in lower_prompt:
@@ -159,9 +175,14 @@ class PatternVisionDetector:
 
         logger = logging.getLogger(__name__)
         
-        system_instructions = """You are a World-Class UI/UX Designer. Based on the user's vibe description, extract the design tokens.
+        system_instructions = """Tu es un extracteur de données JSON strict de classe mondiale.
         
-        You MUST return a VALID JSON structure following this schema exactly:
+        Ta SEULE mission est d'extraire les valeurs de style (couleurs, radius, typo) du texte fourni. 
+        - IGNORE totalement les demandes de création de composants React ou de logique métier. 
+        - Ne génère AUCUN code. 
+        - Produis UNIQUEMENT le dictionnaire JSON des tokens suivant le schéma ci-dessous.
+        
+        Vous DEVEZ retourner une structure JSON VALIDE respectant exactement ce schéma :
         {
           "colors": {
             "primary": "HEX",
@@ -187,11 +208,10 @@ class PatternVisionDetector:
           }
         }
         
-        Be creative! Use professional color palettes (not just blue/gray). 
-        If the user wants 'Cyberpunk', use Neons. If 'Premium', use Golds/Deep Greens/Dark Grays.
-        Return ONLY the JSON. No markdown backticks, no comments."""
+        Sois créatif et spécifique au sujet ! Si le sujet est "Hospital Dark Mode", utilise des couleurs sombres et médicales.
+        Ne renvoie QUE le JSON. Pas de texte avant ou après, pas de markdown (```json)."""
 
-        user_prompt = f"Description de la Vibe Design : \"{prompt}\".\nExtraite les tokens maintenant."
+        user_prompt = f"Extrait UNIQUEMENT les tokens JSON pour cette description visuelle :\n\"\"\"\n{prompt}\n\"\"\""
         
         try:
             # 🛡️ Direct LLM call with StrOutputParser for safety then manual parse
