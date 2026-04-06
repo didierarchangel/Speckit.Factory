@@ -6,6 +6,9 @@ from typing import Any, Dict, Iterable, List
 class ComponentImprover:
     """Module Component Improver : enrichit la liste de composants front utilisateurs."""
 
+    def __init__(self, model: Any = None):
+        self.model = model
+
     VARIANT_MAP = {
         "card": ["stats card", "insight card", "feature card"],
         "button": ["primary", "ghost", "outline"],

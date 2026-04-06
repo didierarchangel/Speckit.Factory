@@ -220,7 +220,7 @@ class SpecGraphManager:
         self.project_enhancer = ProjectEnhancer(model=self.model, project_root=self.root)
         self.component_improver = ComponentImprover(model=self.model)
         self.pattern_vision_detector = PatternVisionDetector(model=self.model)
-        self.design_system_generator = DesignSystemGenerator()
+        self.design_system_generator = DesignSystemGenerator(model=self.model)
         self.ux_flow_designer = UXFlowDesigner(model=self.model)
         self.constitution_generator = ConstitutionGenerator(model=self.model)
 
@@ -585,11 +585,15 @@ class SpecGraphManager:
         return {"component_manifest": manifest}
 
     def pattern_vision_node(self, state: AgentState) -> dict:
-        """Détecte le style visuel et les tokens."""
-        logger.info("👁️ Vision Pattern: Extracting design tokens...")
+        """Détecte le style visuel et les tokens à partir de l'instruction et de la CONSTITUTION."""
+        logger.info("👁️ Vision Pattern: Extracting design tokens from context...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
+        constitution = state.get("constitution_content", "")
         
-        pattern = self.pattern_vision_detector.analyze(instruction)
+        # 🔗 COMBINED CONTEXT (Instruction + Constitution)
+        full_context = f"{instruction}\n\n[CONSTITUTION PROJECT CONTEXT]\n{constitution}"
+        
+        pattern = self.pattern_vision_detector.analyze(full_context)
         
         return {"pattern_vision": pattern}
 

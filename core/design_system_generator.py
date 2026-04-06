@@ -6,6 +6,9 @@ from typing import Any, Dict, List
 class DesignSystemGenerator:
     """Module Design System Generator : transforme tokens + composants en DS catalogue."""
 
+    def __init__(self, model: Any = None):
+        self.model = model
+
     def generate(
         self,
         tokens: Dict[str, Any],

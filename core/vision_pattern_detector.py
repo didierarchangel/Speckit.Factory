@@ -44,19 +44,22 @@ class PatternVisionDetector:
         
         # 1. Détecter si on est sur un style custom (LLM description/Pinterest reference)
         # On force le mode custom si un model est présent pour garantir une vraie IA
-        is_custom = self.model is not None or any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist", "premium", "hospital", "neon", "dark"])
+        is_custom = self.model is not None or any(kw in prompt.lower() for kw in ["design like", "style of", "pinterest", "gpt description", "modern", "minimalist", "premium", "shop", "ecommerce", "neon", "dark"])
         
         # 🛡️ PROMPT SLICING : Isoler la partie visuelle pour éviter le "brain fog" de l'IA
         extraction_context = prompt
-        if len(prompt) > 800:
+        if len(prompt) > 500:
             import re
-            # Chercher entre l'icône palette et l'icône composants
-            style_section = re.search(r"(🎨 DESCRIPTION VISUELLE.*?)(?=🧩 COMPOSANTS|$)", prompt, re.S | re.I)
+            # Chercher une section de Design (🎨, DESIGN CONSTITUTION, VISUAL IDENTITY, etc.)
+            style_section = re.search(r"((?:🎨|##\s*\d*\.?\s*DESIGN).*?)(?=🧩|##\s*\d*\.?\s*CONFIGURATIONS|##\s*\d*\.?\s*STRUCTURE|$)", prompt, re.S | re.I)
             if style_section:
                 extraction_context = style_section.group(1).strip()
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"🎯 Design context slice extracted ({len(extraction_context)} chars)")
             else:
-                # Fallback : Si on ne trouve pas de section, on prend les 1000 premiers caractères
-                extraction_context = prompt[:1000]
+                # Fallback : Si on ne trouve pas de section spécifique, on garde les 1500 premiers caractères
+                extraction_context = prompt[:1500]
 
         if is_custom and self.model:
             style = "custom"
@@ -208,7 +211,7 @@ class PatternVisionDetector:
           }
         }
         
-        Sois créatif et spécifique au sujet ! Si le sujet est "Hospital Dark Mode", utilise des couleurs sombres et médicales.
+        Sois créatif et spécifique au sujet ! Par exemple, si le sujet est "Shop de vente", utilise des couleurs attractives et chaleureuses adaptées au e-commerce.
         Ne renvoie QUE le JSON. Pas de texte avant ou après, pas de markdown (```json)."""
 
         user_prompt = f"Extrait UNIQUEMENT les tokens JSON pour cette description visuelle :\n\"\"\"\n{prompt}\n\"\"\""

@@ -6,6 +6,9 @@ from typing import Any, Dict, Iterable
 class ConstitutionGenerator:
     """Module Constitution Generator : rassemble brief, design et UX."""
 
+    def __init__(self, model: Any = None):
+        self.model = model
+
     def generate(
         self,
         project_brief: Dict[str, Any],

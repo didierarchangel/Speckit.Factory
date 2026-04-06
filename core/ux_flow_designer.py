@@ -6,6 +6,9 @@ from typing import Any, Dict, Iterable, List
 class UXFlowDesigner:
     """Module UX Flow Designer : structure les flux d'interactions."""
 
+    def __init__(self, model: Any = None):
+        self.model = model
+
     def design_flow(
         self,
         ux_instruction: str,

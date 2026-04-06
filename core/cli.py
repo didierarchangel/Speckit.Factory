@@ -1116,8 +1116,8 @@ def vibe_design(arg_prompt, provider, model, prompt):
         click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
         state.update(graph_manager.constitution_generator_node(state)) # type: ignore
         
-        # 🛡️ PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
-        tokens_path = Path("design/tokens.yaml")
+        # 🛡️ PERSISTENCE : Sauvegarder les tokens dans design/dataset/tokens.yaml
+        tokens_path = Path("design/dataset/tokens.yaml")
         tokens_path.parent.mkdir(parents=True, exist_ok=True)
         import yaml
         tokens = state.get("pattern_vision", {}).get("tokens", {})
@@ -1131,7 +1131,7 @@ def vibe_design(arg_prompt, provider, model, prompt):
         
         click.echo("")
         click.secho("✨ [VIBE DESIGN MAKER] EXTRACTION RÉUSSIE !", fg="green", bold=True)
-        click.echo("✅ Tokens visuels sauvegardés dans `design/tokens.yaml`.")
+        click.echo(f"✅ Tokens visuels sauvegardés dans `{tokens_path}`.")
         click.echo("✅ Constitution enrichie avec l'identité du projet.")
         click.echo("")
         click.secho("👉 PROCHAINE ÉTAPE :", fg="cyan", bold=True)
