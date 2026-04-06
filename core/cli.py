@@ -1023,8 +1023,8 @@ def specify(prompt, provider, model):
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt, design_style=selected_design)
         click.echo("\n✅ CONSTITUTION GÉNÉRÉE dans `Constitution/CONSTITUTION.md`.")
-        click.echo("👉 Veuillez la valider ou la modifier manuellement avant l'étape suivante.")
-        click.echo("👉 Prochaine étape : `speckit plan` pour générer la feuille de route.")
+        click.echo("👉 Veuillez la valider ou la modifier manuellement.")
+        click.echo("👉 Prochaine étape : `speckit vibe-design` pour extraire l'identité visuelle.")
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
@@ -1061,6 +1061,69 @@ def component(prompt, provider, model):
 @cli.command()
 @click.option('--provider', help="Provider IA spécifique")
 @click.option('--model', help="Nom du modèle spécifique")
+@click.option('--prompt', help="Description additionnelle de l'ambiance (Vibe)")
+def vibe_design(provider, model, prompt):
+    """[VIBE DESIGN MAKER] Extrait l'identité visuelle (tokens, patterns) du projet."""
+    try:
+        from core.graph import AgentState
+        llm = get_llm(provider, model)
+        click.echo("🎨 Vibe Design Maker : Extraction de l'identité visuelle...")
+        
+        # Charger la constitution
+        const_path = Path("Constitution/CONSTITUTION.md")
+        if not const_path.exists():
+            click.echo("❌ Erreur : La Constitution est manquante. Lancez `speckit specify` d'abord.")
+            return
+        constitution_content = const_path.read_text(encoding="utf-8")
+        
+        # Initialiser le manager de graphe
+        graph_manager = SpecGraphManager(llm)
+        
+        # État initial pour le design
+        state: AgentState = {
+            "constitution_content": constitution_content,
+            "user_instruction": prompt or "Générer une identité visuelle premium et cohérente.",
+            "target_task": "Vibe Design Extraction",
+            "pattern_vision": {},
+            "component_manifest": {},
+            "project_brief": {},
+            "design_system": {},
+            "ux_flow": {},
+            "current_step": "design_extraction"
+        }
+        
+        # Exécuter les nœuds de design séquentiellement
+        click.echo(" ↳ ✨ Enrichissement du brief projet...")
+        state.update(graph_manager.project_enhancer_node(state)) # type: ignore
+        
+        click.echo(" ↳ 🧩 Segmentation des composants UI...")
+        state.update(graph_manager.component_improver_node(state)) # type: ignore
+        
+        click.echo(" ↳ 👁️  Détection des patterns visuels (Vibe)...")
+        state.update(graph_manager.pattern_vision_node(state)) # type: ignore
+        
+        click.echo(" ↳ 🎨 Génération du Design System...")
+        state.update(graph_manager.design_system_node(state)) # type: ignore
+        
+        click.echo(" ↳ 🌊 Définition des flux UX...")
+        state.update(graph_manager.ux_flow_node(state)) # type: ignore
+        
+        click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
+        state.update(graph_manager.constitution_generator_node(state)) # type: ignore
+        
+        # Sauvegarder la constitution mise à jour
+        const_path.write_text(state["constitution_content"], encoding="utf-8")
+        
+        click.echo("\n✅ VIBE DESIGN EXTRAIT ! Tokens sauvegardés et Constitution mise à jour.")
+        click.echo("👉 Prochaine étape : `speckit plan` pour générer la feuille de route.")
+    except Exception as e:
+        click.echo(f"❌ Erreur : {e}")
+        import traceback
+        traceback.print_exc()
+
+@cli.command()
+@click.option('--provider', help="Provider IA spécifique")
+@click.option('--model', help="Nom du modèle spécifique")
 def plan(provider, model):
     """[DOCTRINE 4] Analyse la Constitution et produit la feuille de route (etapes.md)."""
     try:
@@ -1090,6 +1153,13 @@ def plan(provider, model):
         manager = EtapeManager(llm)
         manager.generate_steps_from_constitution(semantic_map=semantic_map)
         click.echo("✅ FEUILLE DE ROUTE GÉNÉRÉE dans `Constitution/etapes.md`.")
+        
+        # Vérification si le design est présent
+        tokens_path = Path("design/tokens.yaml")
+        if not tokens_path.exists():
+            click.echo("\n⚠️  Note : `design/tokens.yaml` n'a pas été trouvé.")
+            click.echo("💡 Il est recommandé de lancer `speckit vibe-design` pour une meilleure identité visuelle.")
+        
         click.echo("👉 Prochaine étape : `speckit run --task ID` pour commencer l'implémentation.")
     except Exception as e:
         error_msg = str(e).lower()

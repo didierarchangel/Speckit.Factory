@@ -21,15 +21,15 @@ L'une des grandes forces de Speckit.Factory réside dans son architecture multi-
 
 ---
 
-### 🌈 Le "Vibe-Design" (Style Figma Maker)
+### 🌈 Le "Vibe Design Maker" (Style Unique & Premium)
 
-Speckit.Factory intègre un moteur de **Design Intelligence** qui vous permet de définir l'esthétique de votre application à partir d'une simple inspiration.
+Speckit.Factory intègre un moteur de **Design Intelligence** nommé **Vibe Design Maker** qui vous permet de définir l'esthétique de votre application à partir d'une simple inspiration.
 
-*   **Vibe-Driven Development** : Fournissez une référence visuelle (Lien Pinterest, Image) ou une **description UI détaillée (ex: issue de ChatGPT)**.
-*   **Extraction de Pattern** : L'IA analyse votre "Vibe" (couleurs #hex, radius, ombres, typographie) et génère un **Custom Design Pattern** unique.
-*   **Cohérence Absolue** : Ce pattern est persisté dans `design/dataset/custom_pattern.json`. Chaque composant généré par la suite (boutons, cartes, headers) héritera automatiquement de cette identité visuelle pour une harmonie totale.
+*   **Extraction de Vibe** : Une fois la Constitution générée, lancez `speckit vibe-design`.
+*   **Vibe-Driven Development** : Fournissez une référence visuelle ou une **description UI détaillée**. L'IA analyse votre "Vibe" (couleurs #hex, radius, ombres, typographie) et génère un **Custom Design Pattern** unique.
+*   **Cohérence Absolue** : Ce pattern est persisté dans `design/tokens.yaml` et `design/dataset/custom_pattern.json`. Chaque composant généré par la suite héritera automatiquement de cette identité visuelle.
 
-> **Exemple d'astuce :** Copiez-collez une description de design incroyable trouvée sur un LLM et demandez à Speckit : *"Utilise ce style : [votre description]"*.
+> **Exemple d'astuce :** Copiez-collez une description de design incroyable trouvée sur un LLM et demandez à Speckit : `speckit vibe-design --prompt "Utilise ce style : [votre description]"`.
 
 ---
 
@@ -40,14 +40,16 @@ Speckit.Factory intègre un moteur de **Design Intelligence** qui vous permet de
      → speckit init
         ↓
 2⃣️  SPECKIT configure l'arborescence et votre Constitution
-     (Vous définissez vos principes dans Constitution/CONSTITUTION.md)
+     → speckit specify "votre demande"
         ↓
-3⃣️  Vous organisez vos Tâches / Spécifications (App, Function, Tech)
+3⃣️  Vous extrayez l'identité visuelle (Optionnel mais recommandé)
+     → speckit vibe-design
         ↓
-4⃣️  SPECKIT Exécute une tâche sous verrouillage strict
+4⃣️  SPECKIT génère la feuille de route intelligente
+     → speckit plan
+        ↓
+5⃣️  L'IA exécute et valide les tâches
      → speckit run --task ID
-        ↓
-5⃣️  L'IA valide que la Constitution est respectée avant toute action!
 ```
 
 ---
@@ -60,15 +62,17 @@ L'interface en ligne de commande professionnelle vous simplifie la vie :
 # Étape 1 : Initialiser le projet dans un nouveau dossier
 speckit init MonProjet
 
-# Optionnel : Initialiser directement dans le dossier courant
-speckit init --here
+# Étape 1.5 : Spécifier le besoin (Génère la Constitution)
+speckit specify "Une application de gestion d'hôpital"
 
-# Étape 2 : Lancer une tâche sous verrouillage contextuel
-speckit run --task 03_02
+# Étape 2 : Extraire l'identité visuelle (Vibe Design Maker)
+speckit vibe-design
 
-# CAS PROJET EXISTANT : Ajouter une fonctionnalité (Composante)
-speckit component "Ajouter un module de chat"
-speckit run --component 04_chat
+# Étape 3 : Générer la feuille de route (Roadmap)
+speckit plan
+
+# Étape 4 : Exécuter une tâche
+speckit run --task 01_01
 ```
 
 ---

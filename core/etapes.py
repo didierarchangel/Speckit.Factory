@@ -82,6 +82,7 @@ class EtapeManager:
             
             OBLIGATION DE STRUCTURE :
             Afin de standardiser la qualité des pipelines, tu DOIS inclure (ou adapter) la structure d'étapes suivante pour garantir une architecture de type Web moderne (API + Frontend) complète :
+            - 00_Vibe_Design_Extraction : Extraction de l'identité visuelle (Vibe Design Maker)
             - 03_Installation_Dependances_Backend_Core (inclure 'cors', 'dotenv')
             - 04_Installation_Dependances_Frontend_Core (inclure 'axios', 'react-hook-form', 'zod', '@hookform/resolvers', 'zustand')
             - 06_Configuration_Outillage_Qualite (inclure 'cypress' pour E2E)
@@ -103,6 +104,7 @@ class EtapeManager:
             - 28_Securite (Sanitization, XSS, MongoDB protection)
             - 29_Documentation (README backend/frontend, Swagger)
             - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
+            - IMPORTANT : L'étape 00_Vibe_Design_Extraction doit contenir la sous-tâche `- [ ] Extraire les tokens dans `design/tokens.yaml` (Vibe Design Maker)`.
 
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
