@@ -47,7 +47,7 @@ class ConstitutionGenerator:
             content_lines.append(f"{idx:02d}. {step}")
         content_lines.append("")
         content_lines.append("## 🔐 Playbook Constitution")
-        content_lines.append("- Documenter les tokens dans `design/templates/tokens.yaml`.")
+        content_lines.append("- Documenter les tokens dans `design/tokens.yaml`.")
         content_lines.append("- Mettre à jour `design/constitution_design.yaml` avec les nouveaux DS-xx.")
 
         return {
