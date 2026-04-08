@@ -428,7 +428,7 @@ def init(path, here):
     click.echo("\n🤖 Configuration des IA que vous souhaitez utiliser pour vibe-coder (Sélectionnez une ou plusieurs) :")
 
     available_ais = {
-        "1": ("Google Gemini", "google"),
+        "1": ("Gemini 2.5 Flash (Rapide)", "google"),
         "2": ("OpenAI GPT", "openai"),
         "3": ("Anthropic Claude", "anthropic"),
         "4": ("DeepSeek", "deepseek"),
@@ -826,9 +826,9 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, te
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         model = model_name or (
-            "gemini-1.5-flash-latest"
+            "gemini-2.5-flash"
             if provider == "google"
-            else "gemini-1.5-flash-lite"
+            else "gemini-2.5-flash-lite"
         )
 
         return ChatGoogleGenerativeAI(
