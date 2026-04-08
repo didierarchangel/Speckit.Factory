@@ -212,6 +212,7 @@ class SpecGraphManager:
     def __init__(self, model, project_root: str = "."):
         from utils.architecture_guard import ArchitectureGuard
         self.model = model
+
         self.root = Path(project_root).resolve()
         # Les prompts sont internes au package
         self.prompts_dir = Path(__file__).parent.parent / "agents"
@@ -224,10 +225,21 @@ class SpecGraphManager:
         self.ux_flow_designer = UXFlowDesigner(model=self.model)
         self.constitution_generator = ConstitutionGenerator(model=self.model)
 
-        
         # Initialisation du graphe
         self.graph_builder = StateGraph(AgentState)
         self._build_graph()
+
+        # Logs Models et Pattern Vision
+        print("Model injected: ", self.model)
+        print(self.pattern_vision_detector.analyze("vibe-design: dark mode with #ff0000 button"))
+        
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        self.logger.info(f"PatternVisionDetector initialized. Model injected: {self.model}")
+        exit()  
+
+
 
     def _ensure_directory_structure(self):
         """Garantit l'existence de l'arborescence standard du projet."""
@@ -960,7 +972,7 @@ class SpecGraphManager:
         
         # Build readability-first instructions for the LLM
         instructions = f"""
-# 🎨 MANDATORY UI DESIGN SYSTEM (TAILWIND)
+# MANDATORY UI DESIGN SYSTEM (TAILWIND)
 
 Use the following Tailwind classes for the UI. DO NOT USE ANY OTHER CLASSES.
 

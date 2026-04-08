@@ -5,6 +5,19 @@ import json
 from itertools import chain
 from typing import Any, Dict, Iterable, List
 
+# ─── 0. Configuration des Limites ──────────────────────────────────────────────────
+MAX_RETRIES = 3
+MAX_DEP_INSTALL_ATTEMPTS = 3  # Limit dependency install loops
+MAX_GRAPH_STEPS = 10  # 🛡️ Maximum number of graph routing decisions (prevents infinite cycles)
+MAX_DEPENDENCY_CYCLES = 2  # 🛡️ Max cycles in Diagnostics → TaskEnforcer → InstallDeps loop
+
+# ─── Packages dépréciés que le LLM hallucine souvent ───
+DEPRECATED_PACKAGES = {
+    "@testing-library/react-hooks": "@testing-library/react",  # Déprécié depuis 2020
+    "react-test-utils": "@testing-library/react",              # Ancien pattern
+    "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
+}
+
 class PatternVisionDetector:
     """Module UI Pattern Detector (Vision) : détecte les tokens visuels sans dépendance aux émojis."""
 
@@ -42,7 +55,7 @@ class PatternVisionDetector:
 
         # 2. Détection du mode de traitement
         keywords = ["design", "style", "modern", "minimalist", "premium", "dark", "light", "glass"]
-        is_custom = self.model is not None or any(kw in clean_context.lower() for kw in keywords)
+        is_custom = any(kw in clean_context.lower() for kw in keywords)
 
         # 3. Extraction de la section de style (recherche de mots-clés au lieu d'émojis)
         extraction_context = clean_context
@@ -56,15 +69,14 @@ class PatternVisionDetector:
                 extraction_context = clean_context[:2000]
 
         # 4. Logique d'extraction
-        if is_custom and self.model:
+        if is_custom:
             self.logger.info("Extraction par Intelligence Artificielle en cours...")
             tokens = self._extract_tokens_with_llm(extraction_context)
-        elif is_custom or image_meta:
+        elif image_meta:
             tokens = self._extract_custom_tokens(extraction_context, image_meta)
         else:
-            style = self._infer_style(clean_context, image_meta)
             tokens = {
-                "colors": self._build_palette(style),
+                "colors": self._build_palette(clean_context, image_meta),
                 "typography": self.BASE_TYPO,
                 "tokens": self.BASE_TOKENS,
             }
@@ -87,7 +99,10 @@ class PatternVisionDetector:
         )
         
         try:
+            self.logger.info("Calling LLM with prompt...")            
             response = self.model.invoke([HumanMessage(content=f"{system_prompt}\n\nTexte: {prompt}")])
+            self.logger.info(f"LLM response: {response}")
+
             # Extraction JSON robuste
             json_str = re.search(r"(\{.*\})", response.content.replace("\n", " "), re.DOTALL).group(1)
             return json.loads(json_str)
@@ -97,7 +112,8 @@ class PatternVisionDetector:
 
     def _extract_custom_tokens(self, text: str, meta: dict | None) -> Dict[str, Any]:
         """Extraction par expressions régulières (Regex)."""
-        palette = dict(self.BASE_COLORS)
+        palette = self._build_palette(text, meta)
+            
         lower_text = text.lower()
         
         # Détection des couleurs Hex
@@ -123,17 +139,38 @@ class PatternVisionDetector:
             found.extend(meta["detected_components"])
         return sorted(list(set(found)))
 
-    def _infer_style(self, text: str, meta: dict | None) -> str:
-        if "material" in text.lower(): return "material"
-        if "fluent" in text.lower(): return "fluent"
-        return "premium"
-
-    def _build_palette(self, style: str) -> Dict[str, str]:
+    def _build_palette(self, text: str, meta: dict | None = None) -> Dict[str, str]:
         p = dict(self.BASE_COLORS)
+        
+        # 1. Inférence basique via le texte et les métadonnées globales
+        combined_text = (text + " " + json.dumps(meta) if meta else text).lower()
+        
+        style = "premium"
+        if "material" in combined_text: style = "material"
+        elif "fluent" in combined_text: style = "fluent"
+        
         styles = {
             "material": {"primary": "#3b82f6", "accent": "#10b981"},
             "fluent": {"primary": "#0ea5e9", "accent": "#22d3ee"},
             "premium": {"primary": "#1d4ed8", "accent": "#8b5cf6"}
         }
         p.update(styles.get(style, {}))
+        self.logger.info(f"Palette base set to style {style}: {styles.get(style, {})}")
+        
+        # 2. Surcharge spécifique si les métadonnées dictent un STYLE clair
+        if meta and "STYLE" in meta and isinstance(meta["STYLE"], dict):
+            for k, v in meta["STYLE"].items():
+                if isinstance(v, dict):
+                    p.update(v)
+                    self.logger.info(f"Palette overridden from meta STYLE ({k}): {v}")
+                elif isinstance(v, str) and v.startswith("#"):
+                    p[k] = v
+                    self.logger.info(f"Palette overridden from meta STYLE (color {k}): {v}")
+                    
         return p
+
+
+
+
+
+
