@@ -1,6 +1,6 @@
 # Le "Cerveau" du Spec-Kit (LE WORKFLOW DE CHAINAGE, LE PIPELINE, LE ROADMAP)
-# Implémentation du graphe de routage LangGraph
-# Ce module orchestre l'interaction entre les sous-agents (Analyse, Implémentation, Vérification)
+# Implementation du graphe de routage LangGraph
+# Ce module orchestre l'interaction entre les sous-agents (Analyse, Implementation, Verification)
 
 import logging
 import time
@@ -25,26 +25,26 @@ from core.vision_pattern_detector import PatternVisionDetector
 
 import shutil
 
-# ─── Logger configuration (avant tout usage) ───
+# --- Logger configuration (avant tout usage) ---
 logger = logging.getLogger(__name__)
 
 npm_path = shutil.which("npm") or shutil.which("npm.cmd")
-logger.info(f"🔧 npm_path détecté : {npm_path}")
+logger.info(f"[SETUP] npm_path detecte : {npm_path}")
 
-# ─── 0. Configuration des Limites ──────────────────────────────────────────────────
+# --- 0. Configuration des Limites --------------------------------------------------
 MAX_RETRIES = 3
 MAX_DEP_INSTALL_ATTEMPTS = 3  # Limit dependency install loops
-MAX_GRAPH_STEPS = 10  # 🛡️ Maximum number of graph routing decisions (prevents infinite cycles)
-MAX_DEPENDENCY_CYCLES = 2  # 🛡️ Max cycles in Diagnostics → TaskEnforcer → InstallDeps loop
+MAX_GRAPH_STEPS = 10  # [SAFE] Maximum number of graph routing decisions (prevents infinite cycles)
+MAX_DEPENDENCY_CYCLES = 2  # [SAFE] Max cycles in Diagnostics -> TaskEnforcer -> InstallDeps loop
 
-# ─── Packages dépréciés que le LLM hallucine souvent ───
+# --- Packages deprecies que le LLM hallucine souvent ---
 DEPRECATED_PACKAGES = {
-    "@testing-library/react-hooks": "@testing-library/react",  # Déprécié depuis 2020
+    "@testing-library/react-hooks": "@testing-library/react",  # Deprecie depuis 2020
     "react-test-utils": "@testing-library/react",              # Ancien pattern
     "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
 }
 
-# ─── Extraction des keywords sémantiques d'une tâche ───
+# --- Extraction des keywords semantiques d'une tache ---
 _BOILERPLATE_WORDS = {
     "setup", "config", "create", "init", "add", "update",
     "implement", "build", "make", "the", "and", "for", "with",
@@ -53,28 +53,28 @@ _BOILERPLATE_WORDS = {
 }
 
 def extract_task_keywords(task_name: str) -> list[str]:
-    """Extrait les keywords sémantiques d’un task ID pour le Context Filtering.
+    """Extrait les keywords semantiques d?un task ID pour le Context Filtering.
     
     Exemple:
-        '07_routes_articles_backend' → ['articles']
-        '09_auth_login_backend'      → ['auth', 'login']
-        '12_gestion_etat_frontend'   → ['gestion', 'etat']
+        '07_routes_articles_backend' -> ['articles']
+        '09_auth_login_backend'      -> ['auth', 'login']
+        '12_gestion_etat_frontend'   -> ['gestion', 'etat']
     """
     import re
-    # Retirer le préfixe numérique (ex: '07_')
+    # Retirer le prefixe numerique (ex: '07_')
     name = re.sub(r'^\d+_', '', task_name.lower())
-    # Découper sur underscores et tirets
+    # Decouper sur underscores et tirets
     raw_words = re.split(r'[_\-\s]+', name)
-    # Filtrer les mots génériques et les mots trop courts
+    # Filtrer les mots generiques et les mots trop courts
     keywords = [w for w in raw_words if w and len(w) >= 3 and w not in _BOILERPLATE_WORDS]
     return keywords
 
-# ─── 🛡️ LLM Quota Error Detection ─────────────────────────────────────────────────
+# --- [SAFE] LLM Quota Error Detection -------------------------------------------------
 
 def is_quota_error(e: Exception) -> bool:
-    """Détecte si une exception est due à un quota LLM dépassé.
+    """Detecte si une exception est due a un quota LLM depasse.
     
-    Patterns détectés:
+    Patterns detectes:
     - RESOURCE_EXHAUSTED: Google Gemini API
     - 429: Rate limit HTTP
     - QUOTA: Quota Error
@@ -85,14 +85,14 @@ def is_quota_error(e: Exception) -> bool:
     return any(indicator in error_str for indicator in quota_indicators)
 
 def extract_retry_delay(e: Exception) -> int:
-    """Extrait le délai de retry recommandé de l'erreur LLM.
+    """Extrait le delai de retry recommande de l'erreur LLM.
     
     Exemple:
-        "retryDelay': '60s'" → 60
-        "Retry-After: 300" → 300
+        "retryDelay': '60s'" -> 60
+        "Retry-After: 300" -> 300
     
     Returns:
-        Délai en secondes (default: 60s)
+        Delai en secondes (default: 60s)
     """
     error_str = str(e)
     
@@ -114,10 +114,10 @@ def extract_retry_delay(e: Exception) -> int:
     # Default: 60 seconds
     return 60
 
-# ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
+# --- 1. Etat du graphe (ou StateGraph/Memoire partagee) -----------------------------
 
 class AgentState(TypedDict):
-    # Variables de contexte partagées (générées une seule fois)
+    # Variables de contexte partagees (generees une seule fois)
     constitution_hash: str
     constitution_content: str
     project_brief: dict
@@ -131,56 +131,56 @@ class AgentState(TypedDict):
     completed_tasks_summary: str
     pending_tasks: str
     
-    # Spécifications de design (Générées par GraphicDesign)
+    # Specifications de design (Generees par GraphicDesign)
     design_spec: dict
     
     # Cible actuelle
     target_task: str
     target_module: str  # Module cible extrait du task ID (backend/frontend/mobile/None)
     
-    # Résultats des nœuds
+    # Resultats des n?uds
     analysis_output: str
     code_to_verify: str
-    impact_fichiers: List[str] # Liste des fichiers impactés
-    validation_status: str # "APPROUVÉ" ou "REJETÉ"
+    impact_fichiers: List[str] # Liste des fichiers impactes
+    validation_status: str # "APPROUVE" ou "REJETE"
     score: str # Score de l'auditeur
-    points_forts: str # Points forts relevés
-    alertes: str # Alertes détectées
-    feedback_correction: str # Instructions si rejeté
-    terminal_diagnostics: str # Erreurs réelles du terminal (build, lint, etc.)
-    existing_code_snapshot: str # Fichiers réels lus depuis le disque (pour le mode PATCH)
+    points_forts: str # Points forts releves
+    alertes: str # Alertes detectees
+    feedback_correction: str # Instructions si rejete
+    terminal_diagnostics: str # Erreurs reelles du terminal (build, lint, etc.)
+    existing_code_snapshot: str # Fichiers reels lus depuis le disque (pour le mode PATCH)
     
     # Gestion des erreurs et boucle
     error_count: int 
     last_error: str
-    audit_errors_history: List[str]  # 🛡️ Historique des erreurs d'audit pour détecter les répétitions
-    retry_count: int  # 🛡️ Track impl_node retries to prevent infinite loops
+    audit_errors_history: List[str]  # [SAFE] Historique des erreurs d'audit pour detecter les repetitions
+    retry_count: int  # [SAFE] Track impl_node retries to prevent infinite loops
     
     # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
     user_instruction: str
     
-    # Carte sémantique du code (Semantic Code Map)
+    # Carte semantique du code (Semantic Code Map)
     code_map: str
     file_tree: str
     
-    # Checklist des sous-tâches
+    # Checklist des sous-taches
     subtask_checklist: str
     
-    # Modules manquants détectés par les diagnostics (Auto-installation)
+    # Modules manquants detectes par les diagnostics (Auto-installation)
     missing_modules: List[str]
     deps_attempts: int
     
-    # Erreurs détectées dans les modules non-cibles (pour éviter boucles)
+    # Erreurs detectees dans les modules non-cibles (pour eviter boucles)
     non_target_errors: dict  # {module_name: error_type}
     
-    # Statistiques de complétion (via TaskEnforcer)
+    # Statistiques de completion (via TaskEnforcer)
     total_subtasks: int
     missing_subtasks: int
     
-    # Keywords sémantiques extraits du task ID (pour le Context Filtering)
+    # Keywords semantiques extraits du task ID (pour le Context Filtering)
     task_keywords: List[str]
     
-    # Clés dynamiques pour le flux de dépendances et validation (mode LLM post-généré)
+    # Cles dynamiques pour le flux de dependances et validation (mode LLM post-genere)
     dep_install_attempts: int  # Tracking attempts to avoid infinite loops
     scanner_missing_modules: List[str]  # Modules detected as missing by scanner
     attempted_installs: List[str]  # Modules already attempted for installation
@@ -255,16 +255,16 @@ class SpecGraphManager:
                 p.mkdir(parents=True, exist_ok=True)
                 count += 1
         if count > 0:
-            logger.info(f"📁 Structure de dossiers garantie ({count} dossiers créés).")
+            logger.info(f"[DIR] Structure de dossiers garantie ({count} dossiers crees).")
 
     def _extract_target_module(self, task_id: str) -> str | None:
         """Extrait le module cible (backend/frontend/mobile) du task ID.
         
         Exemples:
-        - "02_setup_backend" → "backend"
-        - "03_setup_frontend" → "frontend"
-        - "04_setup_mobile" → "mobile"
-        - "05_feature_dashboard" → None (utilise tous les modules)
+        - "02_setup_backend" -> "backend"
+        - "03_setup_frontend" -> "frontend"
+        - "04_setup_mobile" -> "mobile"
+        - "05_feature_dashboard" -> None (utilise tous les modules)
         
         Returns: str (module name) or None (all modules)
         """
@@ -274,7 +274,7 @@ class SpecGraphManager:
         if match:
             return match.group(1).lower()
         
-        # Fallback: stratégie heuristique basée sur le numéro
+        # Fallback: strategie heuristique basee sur le numero
         # 01-02 = backend, 03-04 = frontend, etc.
         match = re.match(r"(\d+)", task_id)
         if match:
@@ -288,7 +288,7 @@ class SpecGraphManager:
         return None
 
     def _load_stack_preferences(self) -> Dict[str, str]:
-        """Lit `.spec-lock.json` pour récupérer les préférences stack de l'utilisateur."""
+        """Lit `.spec-lock.json` pour recuperer les preferences stack de l'utilisateur."""
         lock_file = self.root / ".spec-lock.json"
         if not lock_file.exists():
             return {}
@@ -297,22 +297,22 @@ class SpecGraphManager:
             prefs = data.get("stack_preferences") or {}
             return {k: v for k, v in prefs.items() if isinstance(v, str)}
         except Exception as exc:
-            logger.warning("⚠️ Impossible de charger .spec-lock.json : %s", exc)
+            logger.warning("[WARN] Impossible de charger .spec-lock.json : %s", exc)
             return {}
 
     def _extract_component_candidates(self, state: AgentState) -> List[str]:
-        """Extrait les composants mentionnés dans l'instruction de l'utilisateur."""
+        """Extrait les composants mentionnes dans l'instruction de l'utilisateur."""
         raw = f"{state.get('user_instruction', '')}\n{state.get('target_task', '')}"
-        cleaned = raw.replace("•", "\n").replace(";", "\n").replace(",", "\n")
+        cleaned = raw.replace("-", "\n").replace(";", "\n").replace(",", "\n")
         candidates = []
         for line in cleaned.splitlines():
-            part = line.strip("-• ").strip()
+            part = line.strip("-- ").strip()
             if part and len(part) >= 3:
                 candidates.append(part)
         return candidates
 
     def _get_build_tool(self, target_module: str) -> str:
-        """Détecte le bon outil de build selon le module et framework.
+        """Detecte le bon outil de build selon le module et framework.
         
         Returns: "next", "vite", or "tsc"
         """
@@ -333,16 +333,16 @@ class SpecGraphManager:
         return "tsc"
     
     def _detect_frontend_framework(self) -> str:
-        """Détecte le framework frontend: 'react', 'vue', ou 'next'.
+        """Detecte le framework frontend: 'react', 'vue', ou 'next'.
         
-        Utilise la FileManager pour cohérence.
+        Utilise la FileManager pour coherence.
         """
         from utils.file_manager import FileManager
         fm = FileManager(str(self.root))
         return fm.detect_framework()
 
     def _get_nextjs_router_type(self) -> str:
-        """Détecte le type de router Next.js: 'app' (App Router) ou 'pages' (Pages Router).
+        """Detecte le type de router Next.js: 'app' (App Router) ou 'pages' (Pages Router).
         
         Returns: 'app', 'pages', ou 'unknown'
         """
@@ -359,7 +359,7 @@ class SpecGraphManager:
         return "unknown"
 
     def _detect_cross_module_deps(self, target_module: str, pkg_path: Path) -> dict:
-        """Détecte les dépendances cross-module (ex: frontend dépend du backend).
+        """Detecte les dependances cross-module (ex: frontend depend du backend).
         
         Retourne: {"missing_module": "backend", "reason": "imports de services/auth"}
         """
@@ -375,87 +375,87 @@ class SpecGraphManager:
         if target_module == "frontend":
             # Chercher des indicateurs d'import backend
             if any(lib in all_deps for lib in ["@backend/shared", "@backend/models", "@backend/services", "backend-api"]):
-                return {"missing_module": "backend", "reason": "Frontend dépend de services/modèles Backend"}
+                return {"missing_module": "backend", "reason": "Frontend depend de services/modeles Backend"}
         
         # Backend qui importe du frontend (moins courant mais possible)
         if target_module == "backend":
             if any(lib in all_deps for lib in ["@frontend/shared", "@frontend/types", "frontend-types"]):
-                return {"missing_module": "frontend", "reason": "Backend dépend de types Frontend"}
+                return {"missing_module": "frontend", "reason": "Backend depend de types Frontend"}
         
         return {}
 
     def _add_cross_module_task(self, target_module: str, missing_module: str, reason: str) -> None:
-        """Ajoute une tâche manquante à l'étape concernée dans etapes.md.
+        """Ajoute une tache manquante a l'etape concernee dans etapes.md.
         
-        Stratégie:
+        Strategie:
         - Si on est en frontend et il manque du backend:
-          Décocher la subtâche backend et ajouter une tâche à l'étape backend
+          Decocher la subtache backend et ajouter une tache a l'etape backend
         """
         from core.etapes import EtapeManager
         
         etape_mgr = EtapeManager(self.root)
         
-        # Déterminer l'étape concernée
+        # Determiner l'etape concernee
         step_map = {"backend": "02", "frontend": "03", "mobile": "04"}
         step_num = step_map.get(missing_module, "02")
         
         try:
-            # Ajouter une nouvelle tâche non-cochée à l'étape concernée
-            msg = f"[Cross-Module] {reason} (détecté depuis {target_module})"
-            logger.warning(f"⚠️ Dépendance cross-module détectée: {msg}")
-            logger.info(f"💡 Ajoute une tâche à l'étape {step_num} : Installer {missing_module}")
+            # Ajouter une nouvelle tache non-cochee a l'etape concernee
+            msg = f"[Cross-Module] {reason} (detecte depuis {target_module})"
+            logger.warning(f"[WARN] Dependance cross-module detectee: {msg}")
+            logger.info(f"[INFO] Ajoute une tache a l'etape {step_num} : Installer {missing_module}")
             
             # Lire etapes.md
             etapes_file = self.root / "Constitution" / "etapes.md"
             if etapes_file.exists():
                 content = etapes_file.read_text(encoding="utf-8")
                 
-                # Injecter la tâche manquante dans l'étape concernée
+                # Injecter la tache manquante dans l'etape concernee
                 import re
-                pattern = f"(## Étape {step_num}.*?)(?=## Étape|$)"
+                pattern = f"(## Etape {step_num}.*?)(?=## Etape|$)"
                 
                 def inject_task(match):
                     section = match.group(1)
-                    # Ajouter la tâche avant la fin de la section
+                    # Ajouter la tache avant la fin de la section
                     task_line = f"\n- [ ] [Cross-Module] {reason}"
                     return section + task_line
                 
                 new_content = re.sub(pattern, inject_task, content, flags=re.DOTALL)
                 etapes_file.write_text(new_content, encoding="utf-8")
-                logger.info(f"✅ Tâche ajoutée à etapes.md (Étape {step_num})")
+                logger.info(f"[OK] Tache ajoutee a etapes.md (Etape {step_num})")
         except Exception as e:
-            logger.warning(f"⚠️ Impossible d'ajouter la tâche cross-module : {e}")
+            logger.warning(f"[WARN] Impossible d'ajouter la tache cross-module : {e}")
 
     def _invoke_with_retry(self, chain, invoke_dict: dict, max_attempts: int = 3):
-        """🛡️ Appelle la chaîne LLM avec retry + exponential backoff pour éviter les erreurs réseau.
+        """[SAFE] Appelle la chaine LLM avec retry + exponential backoff pour eviter les erreurs reseau.
         
         Args:
-            chain: La chaîne LangChain à invoquer
-            invoke_dict: Variables à passer à la chaîne
+            chain: La chaine LangChain a invoquer
+            invoke_dict: Variables a passer a la chaine
             max_attempts: Nombre maximum de tentatives (default: 3)
             
         Returns:
             La sortie brute de chain.invoke()
             
         Raises:
-            Exception: Si toutes les tentatives échouent
+            Exception: Si toutes les tentatives echouent
         """
         import time
         for attempt in range(max_attempts):
             try:
-                logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/{max_attempts})...")
+                logger.info(f"[AI] Invocation LLM (tentative {attempt + 1}/{max_attempts})...")
                 result = chain.invoke(invoke_dict)
-                logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                logger.info(f"[OK] Invocation reussie a la tentative {attempt + 1}")
                 return result
             except Exception as e:
                 if attempt < max_attempts - 1:
                     # Backoff exponentiel : 1s, 2s, 4s, etc.
                     wait_time = 2 ** attempt
-                    logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                    logger.warning(f"[WARN] Tentative {attempt + 1} echouee : {str(e)[:100]}. Attente {wait_time}s avant retry...")
                     time.sleep(wait_time)
                 else:
-                    # Dernière tentative échouée
-                    logger.error(f"❌ Toutes les {max_attempts} tentatives ont échoué.")
+                    # Derniere tentative echouee
+                    logger.error(f"[ERROR] Toutes les {max_attempts} tentatives ont echoue.")
                     raise
 
     def _load_prompt(self, filename: str) -> str:
@@ -473,7 +473,7 @@ class SpecGraphManager:
         # --- EXTRACTION DU CODE MARKDOWN (MULTI-FORMAT) ---
         import re
         
-        # 1. Priorité : bloc ```code (format demandé dans le prompt)
+        # 1. Priorite : bloc ```code (format demande dans le prompt)
         # Fix Regex: eviter catastropic backtracking en retirant \s* avant .*?
         code_blocks = re.findall(r"```code\n?(.*?)\n?```", cleaned, re.DOTALL)
         
@@ -494,7 +494,7 @@ class SpecGraphManager:
             result["code"] = "\n\n".join(code_blocks)
                 
         # --- EXTRACTION DU JSON ---
-        # 1. Priorité : Balises <JSON_OUTPUT> (Format standardisé)
+        # 1. Priorite : Balises <JSON_OUTPUT> (Format standardise)
         json_match = re.search(r"<JSON_OUTPUT>\n?(.*?)\n?</JSON_OUTPUT>", cleaned, re.DOTALL)
         if json_match:
             json_content = json_match.group(1).strip()
@@ -508,7 +508,7 @@ class SpecGraphManager:
                 else:
                     json_content = re.sub(r"^```json\s*", "", json_content)
             elif "```" in json_content:
-                 # S'il y a un bloc ``` générique au début, on assume que c'est le json
+                 # S'il y a un bloc ``` generique au debut, on assume que c'est le json
                  match = re.search(r"^```\n?(\{.*?\})\n?```", json_content, re.DOTALL)
                  if match:
                      json_content = match.group(1).strip()
@@ -523,25 +523,25 @@ class SpecGraphManager:
         try:
             parsed_json = parser.parse(json_content)
             result.update(parsed_json)
-            # Si le code était dans le JSON malencontreusement (ancien format), on le prend
+            # Si le code etait dans le JSON malencontreusement (ancien format), on le prend
             if not result.get("code") and parsed_json.get("code"):
                  result["code"] = parsed_json.get("code")
             
-            # Nettoyage final des backticks résiduels dans le code extrait
+            # Nettoyage final des backticks residuels dans le code extrait
             if result.get("code"):
                 result["code"] = re.sub(r'```[a-zA-Z0-9-]*\n?', '', result["code"])
                 result["code"] = result["code"].replace('```', '').strip()
                 
             return result
         except Exception as e:
-            logger.error(f"❌ Échec critique du parsing JSON : {str(e)}")
-            # On renvoie une erreur explicite pour que le noeud appelant puisse réagir
-            raise ValueError(f"Format JSON invalide ou absent dans la réponse de l'IA : {str(e)}")
+            logger.error(f"[ERROR] Echec critique du parsing JSON : {str(e)}")
+            # On renvoie une erreur explicite pour que le noeud appelant puisse reagir
+            raise ValueError(f"Format JSON invalide ou absent dans la reponse de l'IA : {str(e)}")
 
-    # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
+    # --- 2. N?uds (fonctions de traitement) -------------------------------
 
     def _is_frontend_task(self, task_name: str, checklist: str = "") -> bool:
-        """Détecte avec robustesse si une tâche concerne le frontend."""
+        """Detecte avec robustesse si une tache concerne le frontend."""
         import re
         frontend_keywords = [
             r"frontend/", r"\.tsx", r"\.jsx", r"react",
@@ -552,7 +552,7 @@ class SpecGraphManager:
 
     def analysis_node(self, state: AgentState) -> dict:
         """Analyse initiale de la demande utilisateur."""
-        logger.info("🔍 Analysis Node: Analyzing user instruction...")
+        logger.info("[SCAN] Analysis Node: Analyzing user instruction...")
         instruction = state.get("user_instruction", "")
         keywords = extract_task_keywords(instruction)
         
@@ -565,14 +565,14 @@ class SpecGraphManager:
         }
 
     def scaffold_node(self, state: AgentState) -> dict:
-        """Garantit l'arborescence et l'état initial."""
-        logger.info("🏗️ Scaffold Node: Ensuring directory structure...")
+        """Garantit l'arborescence et l'etat initial."""
+        logger.info("[SETUP] Scaffold Node: Ensuring directory structure...")
         self._ensure_directory_structure()
         return {"current_step": "scaffolded"}
 
     def project_enhancer_node(self, state: AgentState) -> dict:
         """Enrichit la vision du projet et la stack."""
-        logger.info("✨ Project Enhancer: Enriching project brief...")
+        logger.info("[OK] Project Enhancer: Enriching project brief...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
         
         brief = self.project_enhancer.enhance(instruction)
@@ -580,8 +580,8 @@ class SpecGraphManager:
         return {"project_brief": brief}
 
     def component_improver_node(self, state: AgentState) -> dict:
-        """Segmente et améliore la liste des composants."""
-        logger.info("🧩 Component Improver: Segmenting UI components...")
+        """Segmente et ameliore la liste des composants."""
+        logger.info("[COMPONENT] Component Improver: Segmenting UI components...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
         
         # Extraction basique des candidats
@@ -591,12 +591,12 @@ class SpecGraphManager:
         return {"component_manifest": manifest}
 
     def pattern_vision_node(self, state: AgentState) -> dict:
-        """Détecte le style visuel et les tokens à partir de l'instruction et de la CONSTITUTION."""
-        logger.info("👁️ Vision Pattern: Extracting design tokens from context...")
+        """Detecte le style visuel et les tokens a partir de l'instruction et de la CONSTITUTION."""
+        logger.info("[VISION] Vision Pattern: Extracting design tokens from context...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
         constitution = state.get("constitution_content", "")
         
-        # 🔗 COMBINED CONTEXT (Instruction + Constitution)
+        # ? COMBINED CONTEXT (Instruction + Constitution)
         full_context = f"{instruction}\n\n[CONSTITUTION PROJECT CONTEXT]\n{constitution}"
         
         pattern = self.pattern_vision_detector.analyze(full_context)
@@ -604,15 +604,15 @@ class SpecGraphManager:
         return {"pattern_vision": pattern}
 
     def design_system_node(self, state: AgentState) -> dict:
-        """Génère le design system et persiste le pattern si custom."""
-        logger.info("🎨 Design System: Generating manifest and persisting custom patterns...")
+        """Genere le design system et persiste le pattern si custom."""
+        logger.info("[DESIGN] Design System: Generating manifest and persisting custom patterns...")
         
         tokens = state.get("pattern_vision", {}).get("tokens", {})
         manifest = state.get("component_manifest", {})
         
         ds = self.design_system_generator.generate(tokens, manifest)
         
-        # 🛡️ PERSISTENCE : Save as custom pattern for GraphicDesign to use
+        # [SAFE] PERSISTENCE : Save as custom pattern for GraphicDesign to use
         if state.get("pattern_vision", {}).get("style") == "custom":
             pattern_data = self.design_system_generator.export_to_pattern(ds)
             # Utilisation du root du projet pour le storage
@@ -623,15 +623,15 @@ class SpecGraphManager:
                 import json
                 with open(pattern_path, "w", encoding="utf-8") as f:
                     json.dump(pattern_data, f, indent=4)
-                logger.info(f"💾 Custom pattern saved and persisted to {pattern_path}")
+                logger.info(f"[SAVE] Custom pattern saved and persisted to {pattern_path}")
             except Exception as e:
-                logger.error(f"❌ Impossible de sauvegarder le custom pattern : {e}")
+                logger.error(f"[ERROR] Impossible de sauvegarder le custom pattern : {e}")
 
         return {"design_system": ds}
 
     def ux_flow_node(self, state: AgentState) -> dict:
-        """Définit les flux d'interactions."""
-        logger.info("🌊 UX Flow: Designing interaction flows...")
+        """Definit les flux d'interactions."""
+        logger.info("[UX] UX Flow: Designing interaction flows...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
         manifest = state.get("component_manifest", {})
         
@@ -641,7 +641,7 @@ class SpecGraphManager:
 
     def constitution_generator_node(self, state: AgentState) -> dict:
         """Compile tout en une Constitution finale."""
-        logger.info("📜 Constitution Generator: Compiling project constitution...")
+        logger.info("[DOC] Constitution Generator: Compiling project constitution...")
         
         brief = state.get("project_brief", {})
         ds = state.get("design_system", {})
@@ -652,23 +652,23 @@ class SpecGraphManager:
         return {"constitution_content": constitution.get("content", "")}
 
     def GraphicDesign_node(self, state: AgentState) -> dict:
-        """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
-        logger.info(f"🎨 Début du Design pour la tâche : {state['target_task']}")
+        """N?ud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
+        logger.info(f"[DESIGN] Debut du Design pour la tache : {state['target_task']}")
         
-        # 🛡️ MANDATORY CHECK: Only run for frontend/UI related tasks
+        # [SAFE] MANDATORY CHECK: Only run for frontend/UI related tasks
         is_ui_task = self._is_frontend_task(state.get("target_task", ""), state.get("subtask_checklist", ""))
         
         if not is_ui_task:
-            logger.info("⏭️ Skipping GraphicDesignEngine (backend task)")
+            logger.info("[SKIP] Skipping GraphicDesignEngine (backend task)")
             return {"design_spec": {"error": "Skipped (non-UI)", "tailwind": {}}}
             
-        # Initialisation du moteur Design (déplacé APRÈS le check pour éviter de charger le dataset inutilement)
+        # Initialisation du moteur Design (deplace APR?S le check pour eviter de charger le dataset inutilement)
         design_engine = GraphicDesign(
             dataset_dir=str(self.root / "design" / "dataset"),
             constitution_path=str(self.root / "design" / "constitution_design.yaml")
         )
         
-        # On utilise le prompt utilisateur ou la tâche cible pour le design
+        # On utilise le prompt utilisateur ou la tache cible pour le design
         prompt = state.get("user_instruction") or state["target_task"]
         
         try:
@@ -677,32 +677,32 @@ class SpecGraphManager:
             if "tailwind" not in design_result:
                 design_result["tailwind"] = {}
             
-            # 🖼️ NEW: Generate a framework-specific Skeleton "mould"
+            # ?? NEW: Generate a framework-specific Skeleton "mould"
             skeleton = design_engine.generate_skeleton(design_result)
             design_result["skeleton"] = skeleton
                 
-            logger.info(f"✅ Design generated: {design_result.get('pattern', 'default')} with Skeleton.")
+            logger.info(f"[OK] Design generated: {design_result.get('pattern', 'default')} with Skeleton.")
             return {"design_spec": design_result}
         except Exception as e:
-            logger.error(f"❌ Échec du moteur GraphicDesign : {str(e)}")
+            logger.error(f"[ERROR] Echec du moteur GraphicDesign : {str(e)}")
             # Fallback minimaliste
             return {"design_spec": {"error": str(e), "tailwind": {}}}
 
     def analysis_node(self, state: AgentState) -> dict:
-        """Nœud 1 : Analyse de conformité et segmentation."""
-        logger.info(f"🔍 Début de l'Analyse pour la tâche : {state['target_task']}")
+        """N?ud 1 : Analyse de conformite et segmentation."""
+        logger.info(f"[SCAN] Debut de l'Analyse pour la tache : {state['target_task']}")
         
-        # ─── EXTRACTION DU MODULE CIBLE ───
+        # --- EXTRACTION DU MODULE CIBLE ---
         target_module = self._extract_target_module(state["target_task"])
         if target_module:
-            logger.info(f"📍 Module cible identifié : {target_module}")
+            logger.info(f"[TARGET] Module cible identifie : {target_module}")
         
         prompt_text = self._load_prompt("subagent_analysis.prompt")
         
-        # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
+        # On utilise JsonOutputParser avec le modele Pydantic de guard.py
         parser = JsonOutputParser(pydantic_object=SubagentAnalysisOutput)
         
-        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
+        # [SAFE] SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
         inject_dict = {
             "constitution_content": state["constitution_content"],
             "current_step": state["current_step"],
@@ -729,17 +729,17 @@ class SpecGraphManager:
                 # Direct invocation with retry logic
                 for attempt in range(3):
                     try:
-                        logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                        logger.info(f"[AI] Invocation LLM (tentative {attempt + 1}/3)...")
                         result = (self.model | StrOutputParser()).invoke([message])
-                        logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                        logger.info(f"[OK] Invocation reussie a la tentative {attempt + 1}")
                         return result
                     except Exception as e:
                         if attempt < 2:
                             wait_time = 2 ** attempt
-                            logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                            logger.warning(f"[WARN] Tentative {attempt + 1} echouee : {str(e)[:100]}. Attente {wait_time}s avant retry...")
                             time.sleep(wait_time)
                         else:
-                            logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                            logger.error(f"[ERROR] Toutes les 3 tentatives ont echoue.")
                             raise
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -749,38 +749,38 @@ class SpecGraphManager:
 
             assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentAnalysisOutput)
-            # On convertit le dict JSON en string formatée pour l'injecter au noeud suivant
+            # On convertit le dict JSON en string formatee pour l'injecter au noeud suivant
             analysis_str = (
                 f"Impact: {result['impact']}\n"
                 f"Conflits: {result['conflits']}\n"
                 f"Segmentation: {', '.join(result['segmentation'])}\n"
-                f"Intégrité: {result['alerte_integrite']}"
+                f"Integrite: {result['alerte_integrite']}"
             )
-            logger.info("✅ Analyse terminée.")
+            logger.info("[OK] Analyse terminee.")
             
-            # Extraire les keywords sémantiques pour le Context Filtering
+            # Extraire les keywords semantiques pour le Context Filtering
             task_keywords = extract_task_keywords(state["target_task"])
-            logger.info(f"🔑 Task keywords extractés : {task_keywords}")
+            logger.info(f"[KEY] Task keywords extractes : {task_keywords}")
             
             return {
                 "analysis_output": analysis_str,
                 "feedback_correction": "",
                 "error_count": 0,
-                "audit_errors_history": [],  # 🛡️ Initialize error tracking
+                "audit_errors_history": [],  # [SAFE] Initialize error tracking
                 "target_module": target_module,   # Passer le module cible au graphe
-                "task_keywords": task_keywords     # 🎯 Persist keywords for Context Filtering
+                "task_keywords": task_keywords     # [GOAL] Persist keywords for Context Filtering
             }
         except ValueError as e:
-            error_msg = f"Réponse IA corrompue (Analysis JSON) : {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            error_msg = f"Reponse IA corrompue (Analysis JSON) : {str(e)}"
+            logger.error(f"[ERROR] {error_msg}")
             return {
-                "validation_status": "REJETÉ",
+                "validation_status": "REJETE",
                 "feedback_correction": f"CRITICAL: Analysis response was invalid JSON. {str(e)}. Please retry with valid JSON.",
                 "last_error": error_msg
             }
         except Exception as e:
             error_msg = f"Erreur d'analyse : {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            logger.error(f"[ERROR] {error_msg}")
             return {
                 "analysis_output": "ERREUR D'ANALYSE", 
                 "feedback_correction": error_msg,
@@ -788,7 +788,7 @@ class SpecGraphManager:
             }
 
     def _read_existing_code(self) -> str:
-        """Lit les fichiers réels du projet sur disque pour le mode PATCH."""
+        """Lit les fichiers reels du projet sur disque pour le mode PATCH."""
         import os
         blocks = []
         extensions = ('.ts', '.tsx', '.js', '.jsx', '.json')
@@ -807,19 +807,19 @@ class SpecGraphManager:
                         pass
         
         snapshot = "\n\n".join(blocks)
-        logger.info(f"📸 Snapshot disque : {len(blocks)} fichiers lus.")
+        logger.info(f"[PHOTO] Snapshot disque : {len(blocks)} fichiers lus.")
         return snapshot
 
     def _get_filtered_context(self, state: AgentState) -> dict:
-        """Filtre le code_map et file_tree pour réduire le contexte LLM.
+        """Filtre le code_map et file_tree pour reduire le contexte LLM.
         
-        Stratégie de réduction:
-        - Extraire SEULEMENT les fichiers pertinents pour la tâche cible
-        - Inclure les dépendances détectées  
-        - Limiter à ~30-40 fichiers max
-        - Idéal pour réduire du contexte 50-70% sans perdre de sémantique
+        Strategie de reduction:
+        - Extraire SEULEMENT les fichiers pertinents pour la tache cible
+        - Inclure les dependances detectees  
+        - Limiter a ~30-40 fichiers max
+        - Ideal pour reduire du contexte 50-70% sans perdre de semantique
         
-        Le contexte réduit reste suffisant pour la génération avec la semantic map.
+        Le contexte reduit reste suffisant pour la generation avec la semantic map.
         """
         import json, re
         
@@ -831,36 +831,36 @@ class SpecGraphManager:
         
         relevant_files = set()
         
-        # 1️⃣ EXTRACTION AGRESSIVE des fichiers mentionnés dans analysis
+        # 1?? EXTRACTION AGRESSIVE des fichiers mentionnes dans analysis
         # Patterns: "fichier: X", "create X", import statements, etc.
         file_patterns = [
             r'(?:files?|fichiers?|path|chemin|import|from)\s*:?\s+["\']?([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)["\']?',
-            r'(?:create|créer|modify|modifier|update)\s+([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
+            r'(?:create|creer|modify|modifier|update)\s+([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
             r'(?:api|route|endpoint|endpoint_|controller|Controller|service|Service)\s*:\s*([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
         ]
         for pattern in file_patterns:
             matches = re.findall(pattern, analysis, re.IGNORECASE)
             relevant_files.update(m.strip() for m in matches if m)
         
-        # 2️⃣ KEYWORDS : préférer ceux persistés en state (calculés dans analysis_node)
+        # 2?? KEYWORDS : preferer ceux persistes en state (calcules dans analysis_node)
         task_words = state.get("task_keywords") or []
         if not task_words:
-            # Fallback : extraire à la volée si l'analyse n'a pas encore réalisé le calcul
+            # Fallback : extraire a la volee si l'analyse n'a pas encore realise le calcul
             task_words = extract_task_keywords(target_task)
-        task_words = list(set(task_words))  # Dédupliquer
+        task_words = list(set(task_words))  # Dedupliquer
         
-        # 3️⃣ MATCHING des fichiers basés sur tâche
-        # Ex: si tâche ="create_user_form", chercher user, form, User, Form
+        # 3?? MATCHING des fichiers bases sur tache
+        # Ex: si tache ="create_user_form", chercher user, form, User, Form
         for keyword in task_words:
             for line in file_tree_str.split('\n'):
                 file_line = line.strip().lower()
                 if file_line and (keyword in file_line or file_line.startswith(keyword)):
                     relevant_files.add(line.strip())
         
-        # 4️⃣ FICHIERS DE CONFIG obligatoires
+        # 4?? FICHIERS DE CONFIG obligatoires
         config_patterns = [
             'package.json', 'tsconfig', 'index.ts', 'index.tsx', 'index.js', 
-            'env', 'types.ts', 'interfaces', '.ts'  # Fichier de types général
+            'env', 'types.ts', 'interfaces', '.ts'  # Fichier de types general
         ]
         for line in file_tree_str.split('\n'):
             if line.strip():
@@ -869,7 +869,7 @@ class SpecGraphManager:
                         relevant_files.add(line.strip())
                         break
         
-        # 5️⃣ PARSER code_map et FILTRER
+        # 5?? PARSER code_map et FILTRER
         try:
             code_map_dict = json.loads(code_map_str) if code_map_str and code_map_str != "{}" else {}
         except:
@@ -879,42 +879,42 @@ class SpecGraphManager:
         
         # Inclure fichiers qui match any relevant criterion
         for file_path in code_map_dict.keys():
-            # Critère 1: Explicitement mentionné dans analysis
+            # Critere 1: Explicitement mentionne dans analysis
             if file_path in relevant_files or any(rp in file_path for rp in relevant_files):
                 filtered_code_map[file_path] = code_map_dict[file_path]
                 continue
             
-            # Critère 2: Contient un keyword de tâche
+            # Critere 2: Contient un keyword de tache
             if any(kw in file_path.lower() for kw in task_words):
                 filtered_code_map[file_path] = code_map_dict[file_path]
                 continue
             
-            # Critère 3: Est un fichier de config/index important
+            # Critere 3: Est un fichier de config/index important
             if any(config.lower() in file_path.lower() for config in config_patterns):
                 filtered_code_map[file_path] = code_map_dict[file_path]
                 continue
         
-        # Fallback: si RIEN n'est trouvé relevé, inclure les premiers fichiers pertinents
+        # Fallback: si RIEN n'est trouve releve, inclure les premiers fichiers pertinents
         if not filtered_code_map and code_map_dict:
-            # Prioriser les fichiers mentionnés dans analysis ou contenant keywords
+            # Prioriser les fichiers mentionnes dans analysis ou contenant keywords
             priority_files = [f for f in code_map_dict.keys() 
                             if any(kw in f.lower() for kw in task_words)]
             if not priority_files:
-                # Aucune priorité trouvée, prendre les premiers
+                # Aucune priorite trouvee, prendre les premiers
                 priority_files = list(code_map_dict.keys())[:15]
             
             for f in priority_files[:25]:  # Max 25 fichiers en fallback
                 filtered_code_map[f] = code_map_dict[f]
         
-        # 6️⃣ LIMITER STRICTEMENT la taille: max 35 fichiers
+        # 6?? LIMITER STRICTEMENT la taille: max 35 fichiers
         if len(filtered_code_map) > 35:
-            # Garder les plus pertinents (avec keywords de tâche en priorité)
+            # Garder les plus pertinents (avec keywords de tache en priorite)
             priority = sorted(filtered_code_map.keys(), 
                             key=lambda f: sum(1 for kw in task_words if kw in f.lower()),
                             reverse=True)
             filtered_code_map = {f: code_map_dict[f] for f in priority[:35]}
         
-        # 7️⃣ FILTRER file_tree pour correspondre
+        # 7?? FILTRER file_tree pour correspondre
         filtered_file_tree = []
         for line in file_tree_str.split('\n'):
             if not line.strip():
@@ -930,8 +930,8 @@ class SpecGraphManager:
         if len(filtered_file_tree) > 40:
             filtered_file_tree = filtered_file_tree[:40]
         
-        logger.info(f"📊 Context Filtering: {len(code_map_dict)} → {len(filtered_code_map)} files in code_map, " +
-                   f"file_tree: ~{len(file_tree_str.split(chr(10)))} → {len(filtered_file_tree)} lines | " +
+        logger.info(f"[STAT] Context Filtering: {len(code_map_dict)} -> {len(filtered_code_map)} files in code_map, " +
+                   f"file_tree: ~{len(file_tree_str.split(chr(10)))} -> {len(filtered_file_tree)} lines | " +
                    f"Task keywords: {task_words[:3]}")  # Log first 3 keywords
         
         return {
@@ -978,7 +978,7 @@ Use the following Tailwind classes for the UI. DO NOT USE ANY OTHER CLASSES.
 - Layout: {ui_ast.get('name', 'Page') if isinstance(ui_ast, dict) else 'Page'}
 - Component hierarchy: {str(ui_ast)[:300]}
 
-## 🧱 THE SKELETON (CRITICAL):
+## [BLOCK] THE SKELETON (CRITICAL):
 YOU MUST START FROM THIS SKELETON. Do not generate a new layout structure.
 FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is required.
 
@@ -996,13 +996,13 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
 
 
     def impl_node(self, state: AgentState) -> dict:
-        """Nœud 2 : Génération de code pur (Exécutant)."""
-        logger.info(f"💻 Début de la Génération de code pour la tâche : {state['target_task']}")
+        """N?ud 2 : Generation de code pur (Executant)."""
+        logger.info(f"[CODE] Debut de la Generation de code pour la tache : {state['target_task']}")
         
-        # Garantie structurelle avant génération
+        # Garantie structurelle avant generation
         self._ensure_directory_structure()
         
-        # ─── MODE PATCH : Sur les retries, injecter le code réel du disque ───
+        # --- MODE PATCH : Sur les retries, injecter le code reel du disque ---
         is_patch_mode = bool(state.get("feedback_correction"))
         existing_snapshot = ""
         
@@ -1012,51 +1012,51 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             prompt_text = self._load_prompt("subagent_impl.prompt")
             
             if is_patch_mode:
-                logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
+                logger.warning("[FIX] MODE PATCH : Lecture du code reel depuis le disque.")
                 existing_snapshot = self._read_existing_code()
-                prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n__FEEDBACK_CORRECTION__"
-                prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n__EXISTING_CODE_SNAPSHOT__"
-                prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
+                prompt_text += "\n\n# [WARN] INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n__FEEDBACK_CORRECTION__"
+                prompt_text += "\n\n# ? CODE EXISTANT SUR DISQUE (NE PAS TOUT REGENERER) :\n__EXISTING_CODE_SNAPSHOT__"
+                prompt_text += "\n\n# MODE: PATCH ? Modifie UNIQUEMENT les fichiers concernes par les erreurs ci-dessus. Ne regenere PAS les fichiers qui fonctionnent."
             
             parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
             format_instructions = parser.get_format_instructions()
             
-            # 🛡️ FILRAGE DE CONTEXTE : Réduire la taille avant d'envoyer au LLM
+            # [SAFE] FILRAGE DE CONTEXTE : Reduire la taille avant d'envoyer au LLM
             filtered = self._get_filtered_context(state)
             code_map_to_use = filtered.get("code_map_filtered", state.get("code_map", ""))
             file_tree_to_use = filtered.get("file_tree_filtered", state.get("file_tree", ""))
             
-            # 🛡️ CONSTITUTION: JAMAIS TRONQUER - C'est la source de vérité !
-            constitution_content = state["constitution_content"]  # ← ALWAYS COMPLETE AND FULL
+            # [SAFE] CONSTITUTION: JAMAIS TRONQUER - C'est la source de verite !
+            constitution_content = state["constitution_content"]  # ? ALWAYS COMPLETE AND FULL
             
-            # 🛡️ TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode SEULEMENT)
+            # [SAFE] TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode SEULEMENT)
             if len(existing_snapshot) > 10000:
                 existing_snapshot = existing_snapshot[:9800] + "\n// [... CODE TRUNCATED FOR CONTEXT LIMIT ...]"
-                logger.warning(f"⚠️ Existing snapshot truncated from {len(state.get('existing_code_snapshot', ''))} to 9800 chars")
+                logger.warning(f"[WARN] Existing snapshot truncated from {len(state.get('existing_code_snapshot', ''))} to 9800 chars")
             
-            # 🛡️ TRUNCATION DE analysis_output si > 5KB (can summarize, not critical)
+            # [SAFE] TRUNCATION DE analysis_output si > 5KB (can summarize, not critical)
             analysis_output = state.get("analysis_output", "")
             if len(analysis_output) > 5000:
                 analysis_output = analysis_output[:4800] + "\n[... ANALYSIS TRUNCATED FOR CONTEXT LIMIT ...]"
-                logger.warning(f"⚠️ Analysis output truncated to 4800 chars")
+                logger.warning(f"[WARN] Analysis output truncated to 4800 chars")
             
-            # 🛡️ TRUNCATION DE terminal_diagnostics si > 3KB (can summarize)
+            # [SAFE] TRUNCATION DE terminal_diagnostics si > 3KB (can summarize)
             terminal_diagnostics = state.get("terminal_diagnostics", "")
             if len(terminal_diagnostics) > 3000:
                 terminal_diagnostics = terminal_diagnostics[:2800] + "\n[... DIAGNOSTICS TRUNCATED ...]"
-                logger.info(f"ℹ️ Terminal diagnostics truncated to 2800 chars")
+                logger.info(f"[INFO] Terminal diagnostics truncated to 2800 chars")
             
-            # 🎨 FORMAT DESIGN SPEC : Rendre lisible et actionnabel pour le LLM
-            raw_design_spec = state.get("design_spec", {"error": "Non générée"})
+            # [DESIGN] FORMAT DESIGN SPEC : Rendre lisible et actionnabel pour le LLM
+            raw_design_spec = state.get("design_spec", {"error": "Non generee"})
             design_spec_formatted = self._format_design_spec_for_prompt(raw_design_spec)
             if raw_design_spec.get("error") == "Skipped (non-UI)":
-                logger.info("ℹ️ No design pattern needed (Backend task).")
+                logger.info("[INFO] No design pattern needed (Backend task).")
             elif raw_design_spec.get("pattern"):
-                logger.info(f"🎨 Design pattern ready: {raw_design_spec['pattern']} (with Tailwind + AST)")
+                logger.info(f"[DESIGN] Design pattern ready: {raw_design_spec['pattern']} (with Tailwind + AST)")
             else:
-                logger.warning(f"⚠️ No design pattern found - using defaults")
+                logger.warning(f"[WARN] No design pattern found - using defaults")
 
-            # 🛡️ REMPLACEMENT DIRECT DES VARIABLES : Sans utiliser ChatPromptTemplate
+            # [SAFE] REMPLACEMENT DIRECT DES VARIABLES : Sans utiliser ChatPromptTemplate
             inject_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": constitution_content,
@@ -1081,24 +1081,24 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
-            # ⚠️ pass directly to model with inline retry
+            # [WARN] pass directly to model with inline retry
             final_prompt = "You are a helpful assistant.\n\n" + prompt_text
             message = HumanMessage(content=final_prompt)
             
             raw_output = None
             for attempt in range(3):
                 try:
-                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    logger.info(f"[AI] Invocation LLM (tentative {attempt + 1}/3)...")
                     raw_output = (self.model | StrOutputParser()).invoke([message])
-                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    logger.info(f"[OK] Invocation reussie a la tentative {attempt + 1}")
                     break
                 except Exception as e:
                     if attempt < 2:
                         wait_time = 2 ** attempt
-                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        logger.warning(f"[WARN] Tentative {attempt + 1} echouee : {str(e)[:100]}. Attente {wait_time}s avant retry...")
                         time.sleep(wait_time)
                     else:
-                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        logger.error(f"[ERROR] Toutes les 3 tentatives ont echoue.")
                         raise
 
             assert raw_output is not None, "LLM output should not be None after retry loop"
@@ -1108,9 +1108,9 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             # En PATCH mode, merger avec le code existant au lieu de remplacer
             if is_patch_mode and state.get("code_to_verify"):
                 new_code = self._merge_code(state["code_to_verify"], new_code)
-                logger.info("✅ PATCH appliqué (merge avec le code existant).")
+                logger.info("[OK] PATCH applique (merge avec le code existant).")
             else:
-                logger.info("✅ Génération de code terminée.")
+                logger.info("[OK] Generation de code terminee.")
             
             return {
                 "code_to_verify": new_code,
@@ -1120,12 +1120,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 "validation_status": "GENERATED"
             }
         except Exception as e:
-            error_msg = f"Erreur de génération : {str(e)}"
-            logger.error(f"❌ {error_msg}")
+            error_msg = f"Erreur de generation : {str(e)}"
+            logger.error(f"[ERROR] {error_msg}")
             new_error_count = state.get("error_count", 0) + 1
             new_retry_count = state.get("retry_count", 0) + 1
             return {
-                "validation_status": "REJETÉ",
+                "validation_status": "REJETE",
                 "feedback_correction": f"Technical error during generation: {str(e)}. Please retry.",
                 "error_count": new_error_count,
                 "retry_count": new_retry_count,
@@ -1136,18 +1136,18 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         import re
         task_type = state.get("target_module")
         
-        # 🛡️ SECURITÉ : On extrait les chemins RÉELS des blocs de code
-        # pour éviter que le LLM ne cache un fichier non autorisé en l'omettant de impact_fichiers
+        # [SAFE] SECURITE : On extrait les chemins REELS des blocs de code
+        # pour eviter que le LLM ne cache un fichier non autorise en l'omettant de impact_fichiers
         code = state.get("code_to_verify", "")
         file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
         extracted_paths = re.findall(file_pattern, code)
         
-        # Fusionner avec impact_fichiers (fallback et complément)
+        # Fusionner avec impact_fichiers (fallback et complement)
         paths = list(set(extracted_paths + state.get("impact_fichiers", [])))
 
         try:
             if paths:
-                logger.info(f"🛡️ ArchitectureGuard: Validating {len(paths)} files before persistence...")
+                logger.info(f"[SAFE] ArchitectureGuard: Validating {len(paths)} files before persistence...")
                 self.arch_guard.validate(task_type, paths)
             
             return {
@@ -1156,38 +1156,38 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             }
         except ValueError as e:
             error_msg = str(e)
-            logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
+            logger.error(f"[STOP] ArchitectureGuard Error: {error_msg}")
             
             return {
                 "arch_guard_status": "FAILED",
-                "validation_status": "REJETÉ",
+                "validation_status": "REJETE",
                 "feedback_correction": f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints.",
                 "error_count": state.get("error_count", 0) + 1,
                 "last_error": error_msg
             }
 
     def path_guard_node(self, state: AgentState) -> dict:
-        """Nœud : Garde protectrice pour la normalisation et validation des chemins.
+        """N?ud : Garde protectrice pour la normalisation et validation des chemins.
         
         Objectifs:
         - Normaliser tous les chemins AVANT la persistance
-        - Bloquer les chemins non sûrs (traversal, caractères invalides)
-        - Signaler les anomalies détectées
-        - Defense-in-depth: Double vérification avant write
+        - Bloquer les chemins non surs (traversal, caracteres invalides)
+        - Signaler les anomalies detectees
+        - Defense-in-depth: Double verification avant write
         
-        Ce nœud insert une couche de défense entre generation et persist.
+        Ce n?ud insert une couche de defense entre generation et persist.
         """
         import re
         from utils.file_manager import FileManager
         
-        logger.info("🛡️ PathGuard: Validating and normalizing all paths...")
+        logger.info("[SAFE] PathGuard: Validating and normalizing all paths...")
         
         code = state.get("code_to_verify", "")
         if not code:
-            logger.debug("✓ No code to validate (empty)")
+            logger.debug("? No code to validate (empty)")
             return {"path_guard_status": "EMPTY"}
         
-        # Instancier FileManager pour accéder aux méthodes de validation
+        # Instancier FileManager pour acceder aux methodes de validation
         fm = FileManager(str(self.root))
         
         # Extraire tous les chemins du code
@@ -1201,12 +1201,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             for i in range(1, len(file_blocks), 2):
                 original_path = file_blocks[i].strip()
                 
-                logger.info(f"🔍 Validating path: {original_path}")
+                logger.info(f"[SCAN] Validating path: {original_path}")
                 
                 try:
-                    # SÉCURITÉ 1 : Détecter les chemins non sûrs
+                    # SECURITE 1 : Detecter les chemins non surs
                     if ".." in original_path:
-                        logger.error(f"🛑 Directory traversal detected: {original_path}")
+                        logger.error(f"[STOP] Directory traversal detected: {original_path}")
                         path_issues.append({
                             "path": original_path,
                             "issue": "Directory traversal (..) detected",
@@ -1215,7 +1215,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                         continue
                     
                     if original_path.startswith('/') or ':' in original_path:
-                        logger.error(f"🛑 Absolute path detected: {original_path}")
+                        logger.error(f"[STOP] Absolute path detected: {original_path}")
                         path_issues.append({
                             "path": original_path,
                             "issue": "Absolute path (not allowed)",
@@ -1223,14 +1223,14 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                         })
                         continue
                     
-                    # SÉCURITÉ 2 : Normaliser le chemin
+                    # SECURITE 2 : Normaliser le chemin
                     try:
                         normalized_path = fm.normalize_path(original_path)
-                        logger.info(f"  ✅ Path normalized: {original_path} → {normalized_path}")
+                        logger.info(f"  [OK] Path normalized: {original_path} -> {normalized_path}")
                         
-                        # SÉCURITÉ 3 : Valider le chemin normalisé
+                        # SECURITE 3 : Valider le chemin normalise
                         if ".." in normalized_path or not normalized_path.startswith(('frontend/', 'backend/', 'mobile/')):
-                            logger.error(f"🛑 Normalized path fails validation: {normalized_path}")
+                            logger.error(f"[STOP] Normalized path fails validation: {normalized_path}")
                             path_issues.append({
                                 "path": original_path,
                                 "normalized": normalized_path,
@@ -1238,16 +1238,16 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                                 "severity": "CRITICAL"
                             })
                         else:
-                            logger.debug(f"  ✓ Path validation passed")
+                            logger.debug(f"  ? Path validation passed")
                         
-                        # Mettre à jour le code avec le chemin normalisé
+                        # Mettre a jour le code avec le chemin normalise
                         if normalized_path != original_path:
                             # Note: In real scenario, we would update the code
                             # For now, we just track it
                             pass
                             
                     except ValueError as e:
-                        logger.warning(f"⚠️ Path normalization failed: {e}")
+                        logger.warning(f"[WARN] Path normalization failed: {e}")
                         path_issues.append({
                             "path": original_path,
                             "issue": str(e),
@@ -1255,25 +1255,25 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                         })
                 
                 except Exception as e:
-                    logger.error(f"❌ Unexpected error validating path {original_path}: {e}")
+                    logger.error(f"[ERROR] Unexpected error validating path {original_path}: {e}")
                     path_issues.append({
                         "path": original_path,
                         "issue": f"Validation error: {e}",
                         "severity": "ERROR"
                     })
         
-        # RÉSUMÉ
+        # RESUME
         critical_issues = [p for p in path_issues if p.get("severity") == "CRITICAL"]
         warning_issues = [p for p in path_issues if p.get("severity") in ["WARNING", "ERROR"]]
         
         if critical_issues:
-            logger.error(f"🛑 PathGuard: {len(critical_issues)} critical issue(s) detected")
+            logger.error(f"[STOP] PathGuard: {len(critical_issues)} critical issue(s) detected")
             status = "BLOCKED"
         elif warning_issues:
-            logger.warning(f"⚠️ PathGuard: {len(warning_issues)} warning(s) detected")
+            logger.warning(f"[WARN] PathGuard: {len(warning_issues)} warning(s) detected")
             status = "WARNED"
         else:
-            logger.info(f"✅ PathGuard: All paths validated successfully")
+            logger.info(f"[OK] PathGuard: All paths validated successfully")
             status = "PASSED"
         
         return {
@@ -1283,13 +1283,13 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         }
 
     def persist_node(self, state: AgentState) -> dict:
-        """Nœud : Persistance du code sur le disque + Assurance des artefacts obligatoires.
+        """N?ud : Persistance du code sur le disque + Assurance des artefacts obligatoires.
         
-        Inclut le diff tracking pour visibilité des changements.
+        Inclut le diff tracking pour visibilite des changements.
         """
         from utils.file_manager import FileManager
         
-        logger.info("💾 Persistance des fichiers sur le disque...")
+        logger.info("[SAVE] Persistance des fichiers sur le disque...")
         code = state.get("code_to_verify", "")
         if not code:
             state["validation_status"] = "EMPTY_CODE"
@@ -1298,29 +1298,29 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         # Snapshot AVANT
         fm = FileManager(str(self.root))
         snapshot_before = fm.snapshot_project_state("before_persist")
-        logger.info(f"📸 Project snapshot before: {snapshot_before['file_count']} files, {snapshot_before['total_size']} bytes")
+        logger.info(f"[PHOTO] Project snapshot before: {snapshot_before['file_count']} files, {snapshot_before['total_size']} bytes")
         
         # Persistence
         sanitized_code, written_paths = self._persist_code_to_disk(code)
-        logger.info(f"✅ {len(written_paths)} fichiers écrits.")
+        logger.info(f"[OK] {len(written_paths)} fichiers ecrits.")
         
-        # ─── ASSURER LES ARTEFACTS OBLIGATOIRES ───
-        # 🛡️ DÉSACTIVÉ : Ne plus créer les fichiers stub vides
-        # Cela aide les développeurs juniors à ne pas être confus par des fichiers vides/placeholders
+        # --- ASSURER LES ARTEFACTS OBLIGATOIRES ---
+        # [SAFE] DESACTIVE : Ne plus creer les fichiers stub vides
+        # Cela aide les developpeurs juniors a ne pas etre confus par des fichiers vides/placeholders
         # required_files = self._extract_required_files(state.get("subtask_checklist", ""))
-        # Les fichiers obligatoires doivent être générés avec du contenu réel, pas des stubs
+        # Les fichiers obligatoires doivent etre generes avec du contenu reel, pas des stubs
         
         required_files = []
         missing_files = []
         written_paths.extend(missing_files)
         
-        # Snapshot APRÈS
+        # Snapshot APR?S
         snapshot_after = fm.snapshot_project_state("after_persist")
-        logger.info(f"📸 Project snapshot after: {snapshot_after['file_count']} files, {snapshot_after['total_size']} bytes")
+        logger.info(f"[PHOTO] Project snapshot after: {snapshot_after['file_count']} files, {snapshot_after['total_size']} bytes")
         
         # Diff des snapshots
         file_diff = fm.diff_snapshots(snapshot_before, snapshot_after)
-        logger.info(f"📊 File persistence diff: {file_diff['summary']}")
+        logger.info(f"[STAT] File persistence diff: {file_diff['summary']}")
         
         return {
             "code_to_verify": sanitized_code,
@@ -1332,17 +1332,17 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         }
 
     def esm_scaffold_node(self, state: AgentState) -> dict:
-        """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés.
+        """N?ud : Assure la compatibilite ESM pour tous les fichiers backend generes.
         
         Remplace automatiquement :
         - `__dirname` par l'utilitaire ESM `getDirname(import.meta.url)`
         - Ajoute les imports manquants pour `getDirname`
-        - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+        - Force le prefixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
         """
         import re
         from pathlib import Path
         
-        logger.info("🔄 Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+        logger.info("[AI] Application de la compatibilite ESM (__dirname, node: imports) sur les fichiers modifies...")
         
         written_paths = state.get("impact_fichiers", [])
         if not written_paths:
@@ -1350,7 +1350,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
         fixed_files = []
         
-        # S'assurer que src/utils/dirname.util.ts existe côté backend
+        # S'assurer que src/utils/dirname.util.ts existe cote backend
         backend_utils_dir = self.root / "backend" / "src" / "utils"
         dirname_util_path = backend_utils_dir / "dirname.util.ts"
         
@@ -1367,7 +1367,7 @@ export const getDirname = (metaUrl: string) => {
 };
 '''
         
-        # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+        # Modules natifs Node necessitant (ou recommandant fortement) le prefixe node:
         NODE_BUILTINS = [
             "path", "fs", "url", "crypto", "child_process", "os", "http", 
             "https", "stream", "util", "events", "assert"
@@ -1389,11 +1389,11 @@ export const getDirname = (metaUrl: string) => {
             
             # 1. Remplacement de __dirname
             if "__dirname" in content and "getDirname" not in content and "fileURLToPath" not in content:
-                # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+                # Creer le dirname.util.ts si c'est la premiere fois qu'on en a besoin
                 if not dirname_util_path.exists() and not created_util:
                     backend_utils_dir.mkdir(parents=True, exist_ok=True)
                     dirname_util_path.write_text(dirname_util_content, encoding="utf-8")
-                    logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+                    logger.info("[OK] Creation de backend/src/utils/dirname.util.ts (ESM compat.)")
                     created_util = True
                 
                 # Calculer le chemin relatif vers utils depuis ce fichier
@@ -1409,7 +1409,7 @@ export const getDirname = (metaUrl: string) => {
                 # Injecter l'import
                 import_stmt = f'import {{ getDirname }} from "{rel_path_to_utils}";\n'
                 
-                # Insérer l'import après les imports existants, ou au début
+                # Inserer l'import apres les imports existants, ou au debut
                 import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
                 if import_match:
                     last_import_end = import_match[-1].end()
@@ -1417,10 +1417,10 @@ export const getDirname = (metaUrl: string) => {
                 else:
                     content = import_stmt + "\n" + content
                 
-                # Injecter la déclaration __dirname
+                # Injecter la declaration __dirname
                 dirname_decl = '\nconst __dirname = getDirname(import.meta.url);\n'
                 
-                # On insère juste après les imports
+                # On insere juste apres les imports
                 import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
                 if import_match:
                     last_import_end = import_match[-1].end()
@@ -1440,13 +1440,13 @@ export const getDirname = (metaUrl: string) => {
 
             # 3. Patch des imports relatifs pour ajouter .js (Requis par ESM NodeNext)
             # Remplacement: import { foo } from "./bar" -> import { foo } from "./bar.js"
-            # Ignore si se termine déjà par .js, .json, .ts, etc.
+            # Ignore si se termine deja par .js, .json, .ts, etc.
             def add_js_extension(match):
                 import_stmt = match.group(0)
                 path_str = match.group(2)
                 
                 # S'assurer qu'il s'agit d'un import relatif interne, pas d'un package npm,
-                # et ne pas ajouter .js si l'extension y est déjà (ou .json, .css etc)
+                # et ne pas ajouter .js si l'extension y est deja (ou .json, .css etc)
                 if (path_str.startswith('.') or path_str.startswith('/')) and not path_str.split('/')[-1].count('.') > 0:
                      return rf"{match.group(1)}'{path_str}.js'{match.group(3)}"
                 return import_stmt
@@ -1462,19 +1462,19 @@ export const getDirname = (metaUrl: string) => {
             re_export_pattern = r"(export\s+.*?\s+from\s+)['\"]([^'\"]+)['\"](;?)"
             content = re.sub(re_export_pattern, add_js_extension, content)
             
-            # Si le contenu a été modifié, sauvegarder
+            # Si le contenu a ete modifie, sauvegarder
             if content != original_content:
                 full_path.write_text(content, encoding="utf-8")
                 fixed_files.append(p)
-                logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+                logger.info(f"[FIX] ESM Patch applique sur {p} (__dirname / node: imports)")
         
-        # Ajouter le fichier utilitaire à la liste s'il a été créé
+        # Ajouter le fichier utilitaire a la liste s'il a ete cree
         if created_util and "backend/src/utils/dirname.util.ts" not in written_paths:
             written_paths.append("backend/src/utils/dirname.util.ts")
             state["impact_fichiers"] = written_paths
             
         status = "FIXED" if fixed_files else "NO_CHANGES"
-        logger.info(f"✅ ESM Compatibility: {status} ({len(fixed_files)} files modified)")
+        logger.info(f"[OK] ESM Compatibility: {status} ({len(fixed_files)} files modified)")
         
         return {
             "esm_status": status,
@@ -1482,17 +1482,17 @@ export const getDirname = (metaUrl: string) => {
         }
 
     def esm_compatibility_node(self, state: AgentState) -> dict:
-        """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés (post-persist).
+        """N?ud : Assure la compatibilite ESM pour tous les fichiers backend generes (post-persist).
         
         Remplace automatiquement :
         - `__dirname` par l'utilitaire ESM `getDirname(import.meta.url)`
         - Ajoute les imports manquants pour `getDirname`
-        - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+        - Force le prefixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
         """
         import re
         from pathlib import Path
         
-        logger.info("🔄 [POST-PERSIST] Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+        logger.info("[AI] [POST-PERSIST] Application de la compatibilite ESM (__dirname, node: imports) sur les fichiers modifies...")
         
         written_paths = state.get("impact_fichiers", [])
         if not written_paths:
@@ -1500,7 +1500,7 @@ export const getDirname = (metaUrl: string) => {
             
         fixed_files = []
         
-        # S'assurer que src/utils/dirname.util.ts existe côté backend
+        # S'assurer que src/utils/dirname.util.ts existe cote backend
         backend_utils_dir = self.root / "backend" / "src" / "utils"
         dirname_util_path = backend_utils_dir / "dirname.util.ts"
         
@@ -1517,7 +1517,7 @@ export const getDirname = (metaUrl: string) => {
 };
 '''
         
-        # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+        # Modules natifs Node necessitant (ou recommandant fortement) le prefixe node:
         NODE_BUILTINS = [
             "path", "fs", "url", "crypto", "child_process", "os", "http", 
             "https", "stream", "util", "events", "assert"
@@ -1539,11 +1539,11 @@ export const getDirname = (metaUrl: string) => {
             
             # 1. Remplacement de __dirname
             if "__dirname" in content and "getDirname" not in content and "fileURLToPath" not in content:
-                # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+                # Creer le dirname.util.ts si c'est la premiere fois qu'on en a besoin
                 if not dirname_util_path.exists() and not created_util:
                     backend_utils_dir.mkdir(parents=True, exist_ok=True)
                     dirname_util_path.write_text(dirname_util_content, encoding="utf-8")
-                    logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+                    logger.info("[OK] Creation de backend/src/utils/dirname.util.ts (ESM compat.)")
                     created_util = True
                 
                 # Calculer le chemin relatif vers utils depuis ce fichier
@@ -1555,7 +1555,7 @@ export const getDirname = (metaUrl: string) => {
                 # Injecter l'import
                 import_stmt = f'import {{ getDirname }} from "{rel_path_to_utils}";\n'
                 
-                # Insérer l'import après les imports existants, ou au début
+                # Inserer l'import apres les imports existants, ou au debut
                 import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
                 if import_match:
                     last_import_end = import_match[-1].end()
@@ -1563,10 +1563,10 @@ export const getDirname = (metaUrl: string) => {
                 else:
                     content = import_stmt + "\n" + content
                 
-                # Injecter la déclaration __dirname
+                # Injecter la declaration __dirname
                 dirname_decl = '\nconst __dirname = getDirname(import.meta.url);\n'
                 
-                # On insère juste après les imports
+                # On insere juste apres les imports
                 import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
                 if import_match:
                     last_import_end = import_match[-1].end()
@@ -1584,19 +1584,19 @@ export const getDirname = (metaUrl: string) => {
                 pattern2 = rf"import\s+\*\s+as\s+(\w+)\s+from\s+['\"]({builtin})['\"]"
                 content = re.sub(pattern2, rf"import * as \1 from 'node:\2'", content)
             
-            # Si le contenu a été modifié, sauvegarder
+            # Si le contenu a ete modifie, sauvegarder
             if content != original_content:
                 full_path.write_text(content, encoding="utf-8")
                 fixed_files.append(p)
-                logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+                logger.info(f"[FIX] ESM Patch applique sur {p} (__dirname / node: imports)")
         
-        # Ajouter le fichier utilitaire à la liste s'il a été créé
+        # Ajouter le fichier utilitaire a la liste s'il a ete cree
         if created_util and "backend/src/utils/dirname.util.ts" not in written_paths:
             written_paths.append("backend/src/utils/dirname.util.ts")
             state["impact_fichiers"] = written_paths
             
         status = "FIXED" if fixed_files else "NO_CHANGES"
-        logger.info(f"✅ ESM Compatibility (post-persist): {status} ({len(fixed_files)} files modified)")
+        logger.info(f"[OK] ESM Compatibility (post-persist): {status} ({len(fixed_files)} files modified)")
         
         return {
             "esm_status": status,
@@ -1604,24 +1604,24 @@ export const getDirname = (metaUrl: string) => {
         }
 
     def esm_import_resolver_node(self, state: AgentState) -> dict:
-        """Nœud : Applique le resolver ESM automatique pour ajouter les extensions .js aux imports.
+        """N?ud : Applique le resolver ESM automatique pour ajouter les extensions .js aux imports.
         
-        Pipeline ESM Post-Génération:
+        Pipeline ESM Post-Generation:
         1. esm_compatibility_node: Remplace __dirname, ajoute node: prefix
-        2. esm_import_resolver_node (CE NŒUD): Ajoute .js aux imports relatifs
-        3. dependency_resolver_node: Valide les dépendances
+        2. esm_import_resolver_node (CE N?UD): Ajoute .js aux imports relatifs
+        3. dependency_resolver_node: Valide les dependances
         
-        Ce nœud utilise le resolver ESMImportResolver pour scanner tous les fichiers
+        Ce n?ud utilise le resolver ESMImportResolver pour scanner tous les fichiers
         et ajouter automatiquement l'extension .js aux imports relatifs TypeScript.
         """
         from utils.esm_import_resolver import ESMImportResolver, apply_esm_import_resolver
         import json
         from pathlib import Path
         
-        logger.info("📦 ESM Import Resolver: Ajout des extensions .js aux imports relatifs...")
+        logger.info("? ESM Import Resolver: Ajout des extensions .js aux imports relatifs...")
         
         try:
-            # Vérifier si le projet est en ESM mode
+            # Verifier si le projet est en ESM mode
             pkg_path = self.root / "package.json"
             is_esm = False
             
@@ -1633,29 +1633,29 @@ export const getDirname = (metaUrl: string) => {
                     pass
             
             if not is_esm:
-                logger.info("ℹ️ Projet non en ESM mode (type != module). Skipping ESM import resolver.")
+                logger.info("[INFO] Projet non en ESM mode (type != module). Skipping ESM import resolver.")
                 return {
                     "esm_resolver_status": "SKIPPED",
                     "esm_resolver_reason": "Non-ESM project"
                 }
             
-            logger.info("🔍 Mode ESM détecté. Scanning et résolution des imports...")
+            logger.info("[SCAN] Mode ESM detecte. Scanning et resolution des imports...")
             
-            # Appliquer le resolver sur les répertoires standards
+            # Appliquer le resolver sur les repertoires standards
             target_dirs = ["backend/src", "frontend/src"]
             stats = apply_esm_import_resolver(self.root, target_dirs)
             
-            # Générer le rapport
+            # Generer le rapport
             successful = {k: v for k, v in stats.items() if v > 0}
             errors = {k: v for k, v in stats.items() if v < 0}
             
             report = []
-            report.append("📋 ESM Import Resolver Report")
-            report.append("━" * 50)
+            report.append("? ESM Import Resolver Report")
+            report.append("=" * 50)
             
             if successful:
                 total_fixes = sum(v for v in successful.values() if v > 0)
-                report.append(f"✅ Successfully fixed: {len(successful)} files")
+                report.append(f"[OK] Successfully fixed: {len(successful)} files")
                 report.append(f"   Total import extensions added: {total_fixes}")
                 for file_path, count in list(successful.items())[:5]:  # Show first 5
                     file_name = Path(file_path).name
@@ -1664,10 +1664,10 @@ export const getDirname = (metaUrl: string) => {
                     report.append(f"   ... and {len(successful) - 5} more files")
             
             if errors:
-                report.append(f"❌ Errors in: {len(errors)} files")
+                report.append(f"[ERROR] Errors in: {len(errors)} files")
             
             if not successful and not errors:
-                report.append("ℹ️ No ESM import fixes needed.")
+                report.append("[INFO] No ESM import fixes needed.")
             
             report_str = "\n".join(report)
             logger.info(report_str)
@@ -1690,22 +1690,22 @@ export const getDirname = (metaUrl: string) => {
             }
 
     def scaffold_node(self, state: AgentState) -> dict:
-        """Nœud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protégeant contre les hallucinations vides du LLM."""
+        """N?ud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protegeant contre les hallucinations vides du LLM."""
         import os
         import json
         
-        logger.info("🏗️ Scaffold Node: Vérification de la structure de base du projet...")
+        logger.info("[SETUP] Scaffold Node: Verification de la structure de base du projet...")
         
         target_mod = state.get("target_module", "")
         
-        # Ce scaffolding n'est fait qu'à l'étape 0-1 de "setup" ou si le dossier est vide
-        # On ne veut pas écraser s'il existe déjà
+        # Ce scaffolding n'est fait qu'a l'etape 0-1 de "setup" ou si le dossier est vide
+        # On ne veut pas ecraser s'il existe deja
         if target_mod == "backend":
             os.makedirs(str(self.root / "backend/src"), exist_ok=True)
             
             pkg_path = self.root / "backend/package.json"
             if not pkg_path.exists():
-                logger.info("   ↳ Création de backend/package.json")
+                logger.info("   -> Creation de backend/package.json")
                 pkg_data = {
                     "name": "backend",
                     "version": "1.0.0",
@@ -1743,7 +1743,7 @@ export const getDirname = (metaUrl: string) => {
                 
             app_path = self.root / "backend/src/app.ts"
             if not app_path.exists():
-                logger.info("   ↳ Création de backend/src/app.ts (template de base)")
+                logger.info("   -> Creation de backend/src/app.ts (template de base)")
                 app_template = '''import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -1754,23 +1754,23 @@ dotenv.config();
 
 const app = express();
 
-// Middlewares de sécurité et parsing
+// Middlewares de securite et parsing
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logging en développement
+// Logging en developpement
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Routes (à ajouter)
+// Routes (a ajouter)
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'UP', message: 'Backend is healthy!' });
 });
 
-// Gestion des erreurs (à implémenter)
+// Gestion des erreurs (a implementer)
 app.use((err: any, req: any, res: any, next: any) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Internal Server Error' });
@@ -1785,7 +1785,7 @@ export default app;
             
             pkg_path = self.root / "frontend/package.json"
             if not pkg_path.exists():
-                logger.info("   ↳ Création de frontend/package.json")
+                logger.info("   -> Creation de frontend/package.json")
                 pkg_data = {
                     "name": "frontend",
                     "version": "1.0.0",
@@ -1819,7 +1819,7 @@ export default app;
                 
             main_path = self.root / "frontend/src/main.tsx"
             if not main_path.exists():
-                logger.info("   ↳ Création de frontend/src/main.tsx (template de base)")
+                logger.info("   -> Creation de frontend/src/main.tsx (template de base)")
                 main_template = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
@@ -1836,24 +1836,24 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         return state  # type: ignore[return-value]
 
     def typescript_validate_node(self, state: AgentState) -> dict:
-        """Nœud : Validation TypeScript des fichiers générés (phase post-persist).
+        """N?ud : Validation TypeScript des fichiers generes (phase post-persist).
         
         Objectifs:
-        - Déterminer si le code TypeScript/JavaScript est syntaxiquement valide
+        - Determiner si le code TypeScript/JavaScript est syntaxiquement valide
         - Capturer les erreurs de compilation avant le pipeline de correction
-        - Signaler les dépendances manquantes détectées
+        - Signaler les dependances manquantes detectees
         """
         import subprocess
         import re
         
-        logger.info("📝 TypeScript Validation (post-persist)...")
+        logger.info("[DOC] TypeScript Validation (post-persist)...")
         
         written_paths = state.get("impact_fichiers", [])
         if not written_paths:
-            logger.debug("✓ No files written, skipping TypeScript validation")
+            logger.debug("? No files written, skipping TypeScript validation")
             return {"typescript_errors": [], "typescript_validation_status": "SKIPPED"}
         
-        # Déterminer les modules cibles à valider
+        # Determiner les modules cibles a valider
         modules_to_check = set()
         for path in written_paths:
             if path.startswith('frontend/'):
@@ -1862,7 +1862,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 modules_to_check.add('backend')
         
         if not modules_to_check:
-            logger.debug("✓ No frontend/backend modules detected in written files")
+            logger.debug("? No frontend/backend modules detected in written files")
             return {"typescript_errors": [], "typescript_validation_status": "NO_MODULES"}
         
         typescript_errors = []
@@ -1872,13 +1872,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             tsconfig_path = module_path / "tsconfig.json"
             
             if not tsconfig_path.exists():
-                logger.debug(f"⚠️ No tsconfig.json found in {module}, skipping validation")
+                logger.debug(f"[WARN] No tsconfig.json found in {module}, skipping validation")
                 continue
             
-            logger.info(f"🔍 Checking TypeScript in {module}/ module...")
+            logger.info(f"[SCAN] Checking TypeScript in {module}/ module...")
             
             try:
-                # Exécuter tsc --noEmit pour valider sans émettre
+                # Executer tsc --noEmit pour valider sans emettre
                 result = subprocess.run(
                     ["npx", "tsc", "--noEmit"],
                     cwd=str(module_path),
@@ -1905,7 +1905,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                                     "message": error_msg.strip(),
                                     "module": module
                                 })
-                                logger.warning(f"  ❌ {file_path}:{line_num} - {error_msg.strip()}")
+                                logger.warning(f"  [ERROR] {file_path}:{line_num} - {error_msg.strip()}")
                             else:
                                 # Generic error line
                                 typescript_errors.append({
@@ -1913,31 +1913,31 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                                     "raw_error": line.strip()
                                 })
                     
-                    logger.warning(f"⚠️ TypeScript found {len(typescript_errors)} error(s) in {module}")
+                    logger.warning(f"[WARN] TypeScript found {len(typescript_errors)} error(s) in {module}")
                 else:
-                    logger.info(f"✅ No TypeScript errors in {module}")
+                    logger.info(f"[OK] No TypeScript errors in {module}")
                     
             except FileNotFoundError:
-                logger.warning(f"⚠️ TypeScript compiler not found in {module} (npm_path install first?)")
+                logger.warning(f"[WARN] TypeScript compiler not found in {module} (npm_path install first?)")
             except subprocess.TimeoutExpired:
-                logger.error(f"❌ TypeScript validation timeout in {module}")
+                logger.error(f"[ERROR] TypeScript validation timeout in {module}")
                 typescript_errors.append({
                     "module": module,
                     "error": "Compilation timeout (>30s)"
                 })
             except Exception as e:
-                logger.error(f"❌ Unexpected error during TypeScript validation in {module}: {e}")
+                logger.error(f"[ERROR] Unexpected error during TypeScript validation in {module}: {e}")
                 typescript_errors.append({
                     "module": module,
                     "error": f"Validation failed: {e}"
                 })
         
-        # Résumé
+        # Resume
         if typescript_errors:
-            logger.warning(f"📊 TypeScript validation: {len(typescript_errors)} issue(s) found")
+            logger.warning(f"[STAT] TypeScript validation: {len(typescript_errors)} issue(s) found")
             status = "FAILED"
         else:
-            logger.info(f"✅ TypeScript validation: All modules pass")
+            logger.info(f"[OK] TypeScript validation: All modules pass")
             status = "PASSED"
         
         return {
@@ -1948,16 +1948,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
-        Valide et répare les dépendances AVANT npm install.
+        Valide et repare les dependances AVANT npm install.
         
-        🔴 Architecture:
-        1. Utilise SemanticScanner pour détecter les VRAIES dépendances utilisées
+        ? Architecture:
+        1. Utilise SemanticScanner pour detecter les VRAIES dependances utilisees
         2. Compare avec package.json
-        3. Ajoute les dépendances manquantes à package.json (pas les hallucinations LLM)
+        3. Ajoute les dependances manquantes a package.json (pas les hallucinations LLM)
         
-        Résultat: Zéro hallucinations de dépendances, seulement des imports réels.
+        Resultat: Zero hallucinations de dependances, seulement des imports reels.
         """
-        logger.info("🔍 Validation des dépendances (avant npm install)...")
+        logger.info("[SCAN] Validation des dependances (avant npm install)...")
         
         try:
             from utils.scanner import SemanticScanner
@@ -1974,11 +1974,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     if not pkg_path.exists():
                         continue
                     
-                    # 🔴 UTILISER LE SCANNER pour détecter les vraies dépendances
+                    # ? UTILISER LE SCANNER pour detecter les vraies dependances
                     scanner = SemanticScanner(str(target_dir))
                     missing_dependencies = scanner.detect_missing_dependencies()
                     
-                    # 🔴 Liste officielle des Built-ins Node.js
+                    # ? Liste officielle des Built-ins Node.js
                     NODE_BUILTINS = {
                         "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
                         "constants", "crypto", "dgram", "dns", "domain", "events", "fs", "fs/promises",
@@ -1991,7 +1991,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     
                     pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
                     
-                    # 🧹 1. Nettoyer les dépendances actuelles (au cas où le LLM les aurait générées)
+                    # [CLEAN] 1. Nettoyer les dependances actuelles (au cas ou le LLM les aurait generees)
                     cleaned_builtins = []
                     for section in ["dependencies", "devDependencies"]:
                         if section in pkg_data:
@@ -2002,19 +2002,19 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                                     cleaned_builtins.append(k)
                     
                     if cleaned_builtins:
-                        logger.info(f"🧹 Nettoyé {len(cleaned_builtins)} Node built-ins de package.json : {', '.join(cleaned_builtins)}")
+                        logger.info(f"[CLEAN] Nettoye {len(cleaned_builtins)} Node built-ins de package.json : {', '.join(cleaned_builtins)}")
                         fixed_issues.extend([f"Removed builtin {k}" for k in cleaned_builtins])
                     
                     if not missing_dependencies and not cleaned_builtins:
-                        logger.info(f"✅ {target_dir.name}: Toutes les dépendances sont déclarées et propres.")
+                        logger.info(f"[OK] {target_dir.name}: Toutes les dependances sont declarees et propres.")
                         continue
                     
-                    # ➕ 2. Ajouter les NOUVELLES dépendances manquantes (filtrées)
+                    # [ADD] 2. Ajouter les NOUVELLES dependances manquantes (filtrees)
                     for pkg in missing_dependencies:
                         if pkg in NODE_BUILTINS or pkg.startswith("node:"):
                             continue
                             
-                        # Déterminer si c'est une dev dependency
+                        # Determiner si c'est une dev dependency
                         is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest", "@testing-library"])
                         section = "devDependencies" if is_dev else "dependencies"
                         
@@ -2023,7 +2023,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         
                         pkg_data[section][pkg] = "latest"
                         fixed_issues.append(f"Added {pkg} to {section}")
-                        logger.info(f"➕ Ajouté {pkg} aux {section}")
+                        logger.info(f"[ADD] Ajoute {pkg} aux {section}")
                     
                     # Sauvegarder si modifications
                     if fixed_issues:
@@ -2032,12 +2032,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         hash_file = target_dir / ".speckit_hash"
                         if hash_file.exists():
                             hash_file.unlink()
-                        logger.info(f"✅ package.json mis à jour: {len(fixed_issues)} dépendances ajoutées")
+                        logger.info(f"[OK] package.json mis a jour: {len(fixed_issues)} dependances ajoutees")
                 
                 except Exception as e:
-                    logger.warning(f"⚠️ Erreur validation {target_dir}: {e}")
+                    logger.warning(f"[WARN] Erreur validation {target_dir}: {e}")
             
-            # 🛡️ Filtrer les modules halluciner du LLM (si présents dans state)
+            # [SAFE] Filtrer les modules halluciner du LLM (si presents dans state)
             IGNORE_MODULES = [
                 "@testing-library/react-hooks",
                 "@testing-library/react",
@@ -2046,111 +2046,111 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             ]
             state["missing_modules"] = [m for m in state.get("missing_modules", []) if m not in IGNORE_MODULES]
             
-            logger.info(f"✅ Validation terminée. Dépendances du scanner définies dans package.json")
+            logger.info(f"[OK] Validation terminee. Dependances du scanner definies dans package.json")
             
         except Exception as e:
-            logger.error(f"❌ validate_dependency_node error: {e}")
+            logger.error(f"[ERROR] validate_dependency_node error: {e}")
             state["missing_modules"] = []
         
-        # 🛡️ TOUJOURS retourner state
+        # [SAFE] TOUJOURS retourner state
         return state  # type: ignore[return-value]
 
     def install_deps_node(self, state: AgentState) -> dict:
-        """Nœud : Installation des dépendances npm — détection statique (scanner) SEULE source de vérité."""
+        """N?ud : Installation des dependances npm ? detection statique (scanner) SEULE source de verite."""
         import subprocess
         from pathlib import Path
         from utils.scanner import SemanticScanner
         
-        logger.info("📦 Installation des dépendances (npm install)...")
+        logger.info("? Installation des dependances (npm install)...")
         
-        # ─── 🛡️ ANTI-BOUCLE NIVEAU 1: Vérifier dep_install_attempts ───
+        # --- [SAFE] ANTI-BOUCLE NIVEAU 1: Verifier dep_install_attempts ---
         attempts = state.get("dep_install_attempts", 0)
         if attempts >= 1:
-            logger.warning("⚠️ Dependency install already attempted. Skipping to prevent loops.")
+            logger.warning("[WARN] Dependency install already attempted. Skipping to prevent loops.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
 
         state["dep_install_attempts"] = attempts + 1
         
-        # ─── Déterminer le répertoire cible ───
+        # --- Determiner le repertoire cible ---
         target_module = state.get("target_module")
         if target_module:
             target_dir = self.root / target_module
         else:
-            # Chercher le premier répertoire avec package.json
+            # Chercher le premier repertoire avec package.json
             for search_dir in [self.root, self.root / "backend", self.root / "frontend"]:
                 if (search_dir / "package.json").exists():
                     target_dir = search_dir
                     break
             else:
-                logger.warning("⚠️ Aucun package.json trouvé")
+                logger.warning("[WARN] Aucun package.json trouve")
                 state["missing_modules"] = []
                 return state  # type: ignore[return-value]
         
         pkg_path = target_dir / "package.json"
         if not pkg_path.exists():
-            logger.warning(f"⚠️ package.json non trouvé dans {target_dir}")
+            logger.warning(f"[WARN] package.json non trouve dans {target_dir}")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
         
-        # 🔴 DÉTECTION STATIQUE: Scanner = SOURCE DE VÉRITÉ
-        # Le scanner analyse les imports RÉELLEMENT utilisés dans le code
-        # C'est la seule vérité fiable. Le LLM peut halluciner, pas le code source.
+        # ? DETECTION STATIQUE: Scanner = SOURCE DE VERITE
+        # Le scanner analyse les imports REELLEMENT utilises dans le code
+        # C'est la seule verite fiable. Le LLM peut halluciner, pas le code source.
         scanner = SemanticScanner(str(target_dir))
         missing_from_scanner = scanner.detect_missing_dependencies()
         
-        logger.info(f"🔍 Scanner détecté {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
+        logger.info(f"[SCAN] Scanner detecte {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
         
-        # 🛡️ FILTRE DEPRECATED_PACKAGES: Remplacer les packages halluciner/dépréciés
+        # [SAFE] FILTRE DEPRECATED_PACKAGES: Remplacer les packages halluciner/deprecies
         if missing_from_scanner:
             replaced = []
             for m in missing_from_scanner:
                 if m in DEPRECATED_PACKAGES:
                     replacement = DEPRECATED_PACKAGES[m]
-                    logger.info(f"🔄 Package déprécié {m} → remplacé par {replacement}")
+                    logger.info(f"[AI] Package deprecie {m} -> remplace par {replacement}")
                     replaced.append(replacement)
                 else:
                     replaced.append(m)
-            missing_from_scanner = list(set(replaced))  # Deduplicate si plusieurs pointent au même replacement
+            missing_from_scanner = list(set(replaced))  # Deduplicate si plusieurs pointent au meme replacement
         
-        # 🛡️ STOCKER LE RÉSULTAT DU SCANNER COMME SOURCE DE VÉRITÉ
+        # [SAFE] STOCKER LE RESULTAT DU SCANNER COMME SOURCE DE VERITE
         state["scanner_missing_modules"] = missing_from_scanner
         
         import shutil
         npm_path = shutil.which("npm") or shutil.which("npm.cmd")
         
-        # 🛡️ Guard: Ensure npm is available before attempting installation
+        # [SAFE] Guard: Ensure npm is available before attempting installation
         if not npm_path:
-            logger.error("❌ npm/npm.cmd not found in PATH. Cannot proceed with package validation.")
+            logger.error("[ERROR] npm/npm.cmd not found in PATH. Cannot proceed with package validation.")
             state["missing_modules"] = []
             state["attempted_installs"] = state.get("attempted_installs", []) + list(set(missing_from_scanner))
             return state  # type: ignore[return-value]
         
-        # Vérifier si on part de 0 (scaffold tout frais)
+        # Verifier si on part de 0 (scaffold tout frais)
         needs_base_install = not (target_dir / "node_modules").exists()
         
-        # ═══ RÈGLE ARCHITECTURALE ═══
-        # Si le scanner dit 0 → c'est 0, sauf si node_modules manque
+        # === R?GLE ARCHITECTURALE ===
+        # Si le scanner dit 0 -> c'est 0, sauf si node_modules manque
         if not missing_from_scanner and not needs_base_install:
-            logger.info("✅ Scanner confirme : aucune dépendance manquante et node_modules présent.")
+            logger.info("[OK] Scanner confirme : aucune dependance manquante et node_modules present.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
         
-        # ─── 🛡️ ANTI-BOUCLE NIVEAU 2: Filtrer les modules déjà tentés ───
+        # --- [SAFE] ANTI-BOUCLE NIVEAU 2: Filtrer les modules deja tentes ---
         attempted = state.get("attempted_installs", [])
         filtered_missing = [m for m in missing_from_scanner if m not in attempted]
         
         if not filtered_missing and not needs_base_install:
-            logger.info(f"⚠️ Tous les modules ont déjà été tentés: {missing_from_scanner}")
-            logger.warning("🛑 Arrêt des tentatives d'installation pour éviter la boucle infinie.")
+            logger.info(f"[WARN] Tous les modules ont deja ete tentes: {missing_from_scanner}")
+            logger.warning("[STOP] Arret des tentatives d'installation pour eviter la boucle infinie.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
         
         if len(filtered_missing) < len(missing_from_scanner):
             skipped = set(missing_from_scanner) - set(filtered_missing)
-            logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
+            logger.info(f"[SKIP]  Modules deja tentes (ignores): {list(skipped)}")
         
-        # --- Vérification préalable avec npm view ---
+        # --- Verification prealable avec npm view ---
         valid_packages = []
         for pkg in filtered_missing:
             try:
@@ -2164,28 +2164,28 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 if view_res.returncode == 0:
                     valid_packages.append(pkg)
                 else:
-                    logger.warning(f"⚠️ Package {pkg} semble introuvable ou erreur registre. Ignoré.")
+                    logger.warning(f"[WARN] Package {pkg} semble introuvable ou erreur registre. Ignore.")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur npm view pour {pkg}: {e}")
+                logger.warning(f"[WARN] Erreur npm view pour {pkg}: {e}")
 
         if not valid_packages and not needs_base_install:
-            logger.warning("❌ Aucun package valide à installer.")
+            logger.warning("[ERROR] Aucun package valide a installer.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
 
         if needs_base_install and not valid_packages:
-            logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
+            logger.warning("[RUN] Installation de base (npm install global) car node_modules est absent...")
             install_args = [npm_path, "install"]
         else:
-            logger.warning(f"🚀 Installation de {len(valid_packages)} modules validés: {valid_packages}...")
+            logger.warning(f"[RUN] Installation de {len(valid_packages)} modules valides: {valid_packages}...")
             install_args = [npm_path, "install"] + valid_packages
         
-        # 🛡️ Tracker les tentatives avant d'essayer
+        # [SAFE] Tracker les tentatives avant d'essayer
         state["attempted_installs"] = attempted + list(set(filtered_missing))
         
         try:
             if not npm_path:
-                logger.error("❌ npm not found in PATH")
+                logger.error("[ERROR] npm not found in PATH")
                 state["missing_modules"] = []
                 return state  # type: ignore[return-value]
 
@@ -2198,61 +2198,61 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             )
 
             if result.returncode != 0:
-                logger.error(f"❌ Échec npm install (code {result.returncode})")
+                logger.error(f"[ERROR] Echec npm install (code {result.returncode})")
                 if result.stderr:
                     logger.error(f"   Diagnostic npm: {result.stderr.strip()}")
             else:
-                logger.info(f"✅ Commande npm install terminée avec succès.")
-                # Vérification post-install physique
+                logger.info(f"[OK] Commande npm install terminee avec succes.")
+                # Verification post-install physique
                 if valid_packages:
                     installed_physically = []
                     for pkg in valid_packages:
-                        # Gérer les scoped packages @foo/bar
+                        # Gerer les scoped packages @foo/bar
                         pkg_dir = target_dir / "node_modules" / pkg
                         if pkg_dir.exists():
                             installed_physically.append(pkg)
                     
                     if installed_physically:
-                        logger.info(f"✨ Vérification physique : {len(installed_physically)} modules confirmés dans node_modules.")
+                        logger.info(f"[OK] Verification physique : {len(installed_physically)} modules confirmes dans node_modules.")
                         installed = state.get("installed_modules", [])
                         installed.extend(installed_physically)
                         state["installed_modules"] = installed
                     else:
-                        logger.warning("⚠️ npm install a réussi mais node_modules semble vide ou incomplet.")
+                        logger.warning("[WARN] npm install a reussi mais node_modules semble vide ou incomplet.")
 
-            logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
+            logger.info(f"[OK] Modules {filtered_missing} installes avec succes.")
             
-            # ─── 🛡️ Effacer missing_modules APRÈS installation ───
+            # --- [SAFE] Effacer missing_modules APR?S installation ---
             state["missing_modules"] = []
             
-            # ─── Tracker les modules installés ───
+            # --- Tracker les modules installes ---
             installed = state.get("installed_modules", [])
             installed.extend(filtered_missing)
             state["installed_modules"] = installed
         except Exception as e:
-            logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
-            # Même en cas d'erreur, effacer pour éviter les boucles
+            logger.error(f"[WARN] Echec installation modules {filtered_missing}: {e}")
+            # Meme en cas d'erreur, effacer pour eviter les boucles
             state["missing_modules"] = []
 
         return state  # type: ignore[return-value]
 
 
     def verify_node(self, state: AgentState) -> dict:
-        """Nœud 3 : Audit de sécurité et conformité finale."""
+        """N?ud 3 : Audit de securite et conformite finale."""
         if state.get("error_count", 0) >= MAX_RETRIES:
-            logger.error("🛑 Limite de tentatives atteinte (MAX_RETRIES).")
-            # Tolérance structurelle : si on a atteint la limite d'essais TypeScript (buildfix) 
-            # MAIS que l'Agent a réussi à structurer les fichiers et les deps (STRUCTURE_OK)
-            # alors on le marque comme APPROUVÉ avec alerte pour ne pas bloquer tout le projet.
+            logger.error("[STOP] Limite de tentatives atteinte (MAX_RETRIES).")
+            # Tolerance structurelle : si on a atteint la limite d'essais TypeScript (buildfix) 
+            # MAIS que l'Agent a reussi a structurer les fichiers et les deps (STRUCTURE_OK)
+            # alors on le marque comme APPROUVE avec alerte pour ne pas bloquer tout le projet.
             if state.get("validation_status") == "STRUCTURE_OK" or state.get("validation_status") == "DEPS_INSTALLED":
-                state["validation_status"] = "APPROUVÉ"
-                state["alertes"] = "Limite de tentatives atteinte. Des erreurs TypeScript mineures peuvent subsister, mais la structure (fichiers/dossiers/routes) a été correctement générée."
+                state["validation_status"] = "APPROUVE"
+                state["alertes"] = "Limite de tentatives atteinte. Des erreurs TypeScript mineures peuvent subsister, mais la structure (fichiers/dossiers/routes) a ete correctement generee."
             else:
-                state["validation_status"] = "REJETÉ"
-                state["alertes"] = "Limite de tentatives atteinte et la structure demandée n'est pas conforme."
+                state["validation_status"] = "REJETE"
+                state["alertes"] = "Limite de tentatives atteinte et la structure demandee n'est pas conforme."
             return state  # type: ignore[return-value]
 
-        # Rafraîchir le file_tree depuis le disque pour un audit précis
+        # Rafraichir le file_tree depuis le disque pour un audit precis
         import os
         fresh_tree = []
         ignore = {'node_modules', 'dist', '.git', '__pycache__'}
@@ -2262,42 +2262,42 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 fresh_tree.append(os.path.relpath(os.path.join(root_dir, f), str(self.root)).replace('\\', '/'))
         state = {**state, "file_tree": "\n".join(fresh_tree)}
 
-        logger.info(f"🛡️ Début de l'Audit pour le code généré.")
+        logger.info(f"[SAFE] Debut de l'Audit pour le code genere.")
         
         # Charger le prompt et le parser
         prompt_text = self._load_prompt("subagent_verify.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentVerifyOutput)
         
         try:
-            # 🛡️ IMPROVED: Capturer l'état de génération AVANT l'audit
+            # [SAFE] IMPROVED: Capturer l'etat de generation AVANT l'audit
             terminal_diag = state.get("terminal_diagnostics", "")
             target_module = state.get("target_module")
             
-            # Détection robuste des erreurs TSC/Build
+            # Detection robuste des erreurs TSC/Build
             has_build_errors = False
             if target_module:
-                 # Erreur si le module cible a échoué
-                 has_build_errors = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag or f"[NEXT {target_module}] ❌" in terminal_diag
+                 # Erreur si le module cible a echoue
+                 has_build_errors = f"[TSC {target_module}] [ERROR]" in terminal_diag or f"[VITE {target_module}] [ERROR]" in terminal_diag or f"[NEXT {target_module}] [ERROR]" in terminal_diag
             else:
-                 # Erreur si n'importe quel module a échoué (fallback)
-                 has_build_errors = "❌ ÉCHEC" in terminal_diag
+                 # Erreur si n'importe quel module a echoue (fallback)
+                 has_build_errors = "[ERROR] ECHEC" in terminal_diag
             
-            generation_failed = state.get("validation_status") == "REJETÉ" or state.get("last_error", "") or has_build_errors
+            generation_failed = state.get("validation_status") == "REJETE" or state.get("last_error", "") or has_build_errors
             structure_valid = state.get("validation_status") not in ["STRUCTURE_KO", "PATH_BLOCKED", "STRUCTURE_INVALID"]
             
-            logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
+            logger.info(f"[STAT] Etat pre-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
             
-            # ─── HARD STRUCTURE VALIDATION ───
-            # On respecte l'état calculé par TaskEnforcer ou PathGuard
+            # --- HARD STRUCTURE VALIDATION ---
+            # On respecte l'etat calcule par TaskEnforcer ou PathGuard
             structure_valid = state.get("validation_status") not in ["STRUCTURE_KO", "PATH_BLOCKED", "STRUCTURE_INVALID"]
             
-            # 🛡️ ANTI-BYPASS: Si le statut est déjà REJETÉ ou FAILED, on ne l'auto-valide pas ici
-            if state.get("validation_status") in ["REJETÉ", "VALIDATION_FAILED"]:
+            # [SAFE] ANTI-BYPASS: Si le statut est deja REJETE ou FAILED, on ne l'auto-valide pas ici
+            if state.get("validation_status") in ["REJETE", "VALIDATION_FAILED"]:
                 structure_valid = False
-                logger.warning(f"⚠️ Structure validée comme FALSE car status={state.get('validation_status')}")
+                logger.warning(f"[WARN] Structure validee comme FALSE car status={state.get('validation_status')}")
 
             if not structure_valid:
-                logger.error("❌ Structure validation failed. Aborting audit.")
+                logger.error("[ERROR] Structure validation failed. Aborting audit.")
                 return {
                     **state,
                     "generation_failed": True,
@@ -2305,16 +2305,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     "error_count": state.get("error_count", 0) + 1
                 }
                                     
-            # 🛡️ RETRY avec backoff pour l'audit lui-même
+            # [SAFE] RETRY avec backoff pour l'audit lui-meme
             
             total_tasks = state.get("total_subtasks", 1)
             missing = state.get("missing_tasks", 0)
             completed = max(0, total_tasks - missing)
             
-            # Forcer un score strict basé sur la checklist
+            # Forcer un score strict base sur la checklist
             checklist_score = int((completed / max(1, total_tasks)) * 100)
             
-            # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+            # [SAFE] SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
             inject_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
@@ -2338,7 +2338,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
-            # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+            # [WARN] NO ChatPromptTemplate - pass directly to model with inline retry
             from langchain_core.messages import HumanMessage
             final_prompt = "You are a helpful assistant.\n\n" + prompt_text
             message = HumanMessage(content=final_prompt)
@@ -2346,89 +2346,89 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             raw_output = None
             for attempt in range(3):
                 try:
-                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    logger.info(f"[AI] Invocation LLM (tentative {attempt + 1}/3)...")
                     raw_output = (self.model | StrOutputParser()).invoke([message])
-                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    logger.info(f"[OK] Invocation reussie a la tentative {attempt + 1}")
                     break
                 except Exception as e:
                     if attempt < 2:
                         wait_time = 2 ** attempt
-                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        logger.warning(f"[WARN] Tentative {attempt + 1} echouee : {str(e)[:100]}. Attente {wait_time}s avant retry...")
                         time.sleep(wait_time)
                     else:
-                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        logger.error(f"[ERROR] Toutes les 3 tentatives ont echoue.")
                         raise
             
             assert raw_output is not None, "LLM output should not be None after retry loop"
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
-            verifier_status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
+            verifier_status = "APPROUVE" if "APPROUVE" in verdict else "REJETE"
             
             # Le score final est le minimum entre le score IA et le vrai score de checklist
             llm_score = int(result.get("score_conformite", 100))
             final_score = min(llm_score, checklist_score)
             
-            # 🛡️ HARD OVERRIDE: Si des tâches manquent dans la checklist, C'EST REJETÉ
+            # [SAFE] HARD OVERRIDE: Si des taches manquent dans la checklist, C'EST REJETE
             if missing > 0:
-                logger.warning(f"⚠️ Audit REJETÉ par système (Checklist incomplète: {missing}/{total_tasks} manquantes). Forçage REJETÉ.")
-                verifier_status = "REJETÉ"
+                logger.warning(f"[WARN] Audit REJETE par systeme (Checklist incomplete: {missing}/{total_tasks} manquantes). Forcage REJETE.")
+                verifier_status = "REJETE"
             
-            # 🛡️ IMPROVED AUDIT LOGIC:
-            # - Si génération échouée OU structure invalide OU verifier=REJETÉ → REJETÉ
-            # 🛡️ HANDLING "Aucune alerte" FALSE POSITIVE
+            # [SAFE] IMPROVED AUDIT LOGIC:
+            # - Si generation echouee OU structure invalide OU verifier=REJETE -> REJETE
+            # [SAFE] HANDLING "Aucune alerte" FALSE POSITIVE
             alerts_val = result.get('alertes', '')
             alerts_low = alerts_val.lower()
-            if verifier_status == "REJETÉ" and ("aucune alerte" in alerts_low or alerts_low.strip() in ["none", "n/a", "ras"]):
+            if verifier_status == "REJETE" and ("aucune alerte" in alerts_low or alerts_low.strip() in ["none", "n/a", "ras"]):
                 if not generation_failed and structure_valid and missing == 0:
-                    logger.info("🛡️ Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVÉ.")
-                    verifier_status = "APPROUVÉ"
+                    logger.info("[SAFE] Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVE.")
+                    verifier_status = "APPROUVE"
 
-            if generation_failed or not structure_valid or verifier_status == "REJETÉ":
+            if generation_failed or not structure_valid or verifier_status == "REJETE":
                 if missing > 0:
-                    logger.warning(f"⚠️ Audit REJETÉ: Il manque encore des fichiers obligatoires.")
+                    logger.warning(f"[WARN] Audit REJETE: Il manque encore des fichiers obligatoires.")
                 elif generation_failed:
-                    logger.warning(f"⚠️ Audit REJETÉ: La génération technique a échoué (TSC errors).")
+                    logger.warning(f"[WARN] Audit REJETE: La generation technique a echoue (TSC errors).")
                 elif not structure_valid:
-                    logger.warning(f"⚠️ Audit REJETÉ: La structure demandée est invalide.")
+                    logger.warning(f"[WARN] Audit REJETE: La structure demandee est invalide.")
                 
-                status = "REJETÉ"
+                status = "REJETE"
                 feedback_msg = result.get('action_corrective', '')
                 if missing > 0:
                     feedback_msg = f"Checklist incomplete. You missed {missing} task(s)/file(s). You MUST create them: " + state.get("feedback_correction", "")
                 elif not feedback_msg and generation_failed:
                     feedback_msg = "TypeScript validation failed. Please fix the compilation errors in the terminal diagnostics."
             else:
-                status = "APPROUVÉ"
+                status = "APPROUVE"
                 feedback_msg = ""
             
-            if status == "APPROUVÉ":
-                logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")
+            if status == "APPROUVE":
+                logger.info(f"[OK] Code APPROUVE. Score: {final_score}")
                 return {
-                    "validation_status": "APPROUVÉ", 
+                    "validation_status": "APPROUVE", 
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
-                    "alertes": result.get('alertes', 'Aucune.' if not generation_failed else 'Génération partiellement échouée Mais structure valide.'),
+                    "alertes": result.get('alertes', 'Aucune.' if not generation_failed else 'Generation partiellement echouee Mais structure valide.'),
                     "feedback_correction": "",
                     "audit_errors_history": state.get("audit_errors_history", [])
                 }
             else:
                 new_error_count = state.get("error_count", 0) + 1
                 
-                # 🛡️ TRACK audit errors to detect recurring issues
+                # [SAFE] TRACK audit errors to detect recurring issues
                 audit_errors = state.get("audit_errors_history", [])
                 error_summary = f"{result.get('alertes', '')[:100]}..."  # First 100 chars
                 audit_errors.append(error_summary)
                 
-                # 🔍 DETECT RECURRING ERRORS (same error twice = can't fix it automatically)
+                # [SCAN] DETECT RECURRING ERRORS (same error twice = can't fix it automatically)
                 is_recurring_error = len(audit_errors) >= 2 and audit_errors[-1] == audit_errors[-2]
                 if is_recurring_error:
-                    logger.error(f"🔄 RECURRING ERROR DETECTED: {audit_errors[-1]}")
-                    logger.error(f"🛑 Same error appeared {len([e for e in audit_errors if e == audit_errors[-1]])} times. Stopping retries.")
+                    logger.error(f"[AI] RECURRING ERROR DETECTED: {audit_errors[-1]}")
+                    logger.error(f"[STOP] Same error appeared {len([e for e in audit_errors if e == audit_errors[-1]])} times. Stopping retries.")
                     new_error_count = MAX_RETRIES  # Force END by marking max retries reached
                 
                 return {
-                    "validation_status": "REJETÉ", 
+                    "validation_status": "REJETE", 
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', ''),
@@ -2437,17 +2437,17 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     "audit_errors_history": audit_errors
                 }
         except Exception as e:
-            logger.error(f"❌ Erreur audit : {e}")
-            state["validation_status"] = "REJETÉ"
+            logger.error(f"[ERROR] Erreur audit : {e}")
+            state["validation_status"] = "REJETE"
             state["feedback_correction"] = str(e)
             state["error_count"] = state.get("error_count", 0) + 1
             return state  # type: ignore[return-value]
 
     def task_enforcer_node(self, state: AgentState) -> dict:
-        """Nœud de vérification structurelle DÉTERMINISTE (sans LLM)."""
-        logger.info("🛡️ Vérification structurelle (TaskEnforcer - MODE DÉTERMINISTE)...")
+        """N?ud de verification structurelle DETERMINISTE (sans LLM)."""
+        logger.info("[SAFE] Verification structurelle (TaskEnforcer - MODE DETERMINISTE)...")
         
-        # 🛡️ PRIORITÉ 2: Source de vérité = filesystem réel vs checklist
+        # [SAFE] PRIORITE 2: Source de verite = filesystem reel vs checklist
         # Ne PAS utiliser le LLM pour identifier les fichiers manquants!
         
         # 1. Extraire la checklist depuis le subtask_checklist
@@ -2461,25 +2461,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             matches = re.findall(r'[`\'"]?([a-zA-Z0-9\/_\-\.]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))[`\'"]?', line)
             expected_files.update(matches)
         
-        logger.info(f"📋 Fichiers attendus selon la checklist: {len(expected_files)}")
+        logger.info(f"? Fichiers attendus selon la checklist: {len(expected_files)}")
         
-        # 3. Extraire les fichiers réellement présents depuis file_tree
+        # 3. Extraire les fichiers reellement presents depuis file_tree
         real_files = set()
         for line in file_tree.split('\n'):
             line = line.strip()
-            if line and not line.startswith('│') and not line.startswith('└') and '/' in line:
-                # Nettoyer les caractères de visualisation
-                clean_path = re.sub(r'^[\s│└─]*', '', line).strip()
+            if line and not line.startswith('|') and not line.startswith('+') and '/' in line:
+                # Nettoyer les caracteres de visualisation
+                clean_path = re.sub(r'^[\s|+-]*', '', line).strip()
                 if '.' in clean_path and any(clean_path.endswith(ext) for ext in ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md']):
                     real_files.add(clean_path)
         
-        logger.info(f"📂 Fichiers détectés dans file_tree: {len(real_files)}")
+        logger.info(f"? Fichiers detectes dans file_tree: {len(real_files)}")
         
-        # 4. Calculer la différence (DÉTERMINISTE, pas LLM)
+        # 4. Calculer la difference (DETERMINISTE, pas LLM)
         missing_files = expected_files - real_files
         
         if missing_files:
-            logger.warning(f"❌ {len(missing_files)} fichiers manquants détectés:")
+            logger.warning(f"[ERROR] {len(missing_files)} fichiers manquants detectes:")
             for f in sorted(missing_files):
                 logger.warning(f"   - {f}")
             return {
@@ -2488,12 +2488,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 "feedback_correction": f"MANQUANT: {', '.join(sorted(missing_files))}"
             }
         else:
-            logger.info(f"✅ Tous les fichiers attendus sont présents ({len(expected_files)} fichiers)")
+            logger.info(f"[OK] Tous les fichiers attendus sont presents ({len(expected_files)} fichiers)")
             return {"validation_status": "STRUCTURE_OK"}
 
     def code_map_node(self, state: AgentState) -> dict:
-        """Nœud de génération de la Semantic Code Map."""
-        logger.info("🗺️ Génération de la Semantic Code Map...")
+        """N?ud de generation de la Semantic Code Map."""
+        logger.info("?? Generation de la Semantic Code Map...")
         import os, re, json
         
         code_map = {"file_tree": [], "semantics": {}}
@@ -2516,8 +2516,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         return {"code_map": json.dumps(code_map["semantics"]), "file_tree": "\n".join(code_map["file_tree"])}
 
     def buildfix_node(self, state: AgentState) -> dict:
-        """Nœud de réparation automatique du build."""
-        logger.info("🛠️ Tentative de réparation du build...")
+        """N?ud de reparation automatique du build."""
+        logger.info("?? Tentative de reparation du build...")
         
         try:
             from langchain_core.messages import HumanMessage
@@ -2540,24 +2540,24 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
-            # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+            # [WARN] NO ChatPromptTemplate - pass directly to model with inline retry
             final_prompt = "You are a helpful assistant.\n\n" + prompt_text
             message = HumanMessage(content=final_prompt)
             
             raw_output = None
             for attempt in range(3):
                 try:
-                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+                    logger.info(f"[AI] Invocation LLM (tentative {attempt + 1}/3)...")
                     raw_output = (self.model | StrOutputParser()).invoke([message])
-                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+                    logger.info(f"[OK] Invocation reussie a la tentative {attempt + 1}")
                     break
                 except Exception as e:
                     if attempt < 2:
                         wait_time = 2 ** attempt
-                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+                        logger.warning(f"[WARN] Tentative {attempt + 1} echouee : {str(e)[:100]}. Attente {wait_time}s avant retry...")
                         time.sleep(wait_time)
                     else:
-                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+                        logger.error(f"[ERROR] Toutes les 3 tentatives ont echoue.")
                         raise
             
             assert raw_output is not None, "LLM output should not be None after retry loop"
@@ -2571,7 +2571,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 "feedback_correction": f"BUILD FIX: {result.get('resume', '')}"
             }
         except Exception as e:
-            logger.error(f"🛑 buildfix_node error: {e}")
+            logger.error(f"[STOP] buildfix_node error: {e}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
 
     def _persist_code_to_disk(self, code: str) -> tuple[str, list[str]]:
@@ -2625,8 +2625,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     content = parts[i+1].strip()
                     blocks[filename] = content
             elif code.strip() and not re.search(pattern, code):
-                # Fallback pour le cas où delta ne contient pas de marqueurs de fichiers (si un seul fichier est retourné sans marqueur)
-                # Mais BuildFix est censé retourner avec marqueurs. Dans le doute, on n'écrase pas tout si on ne peut pas parser.
+                # Fallback pour le cas ou delta ne contient pas de marqueurs de fichiers (si un seul fichier est retourne sans marqueur)
+                # Mais BuildFix est cense retourner avec marqueurs. Dans le doute, on n'ecrase pas tout si on ne peut pas parser.
                 pass
             return blocks
 
@@ -2634,7 +2634,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         delta_blocks = parse_blocks(delta)
         
         if not delta_blocks and delta.strip():
-             # Si delta n'a pas pu être parsé mais n'est pas vide, c'est peut-être un fichier unique.
+             # Si delta n'a pas pu etre parse mais n'est pas vide, c'est peut-etre un fichier unique.
              # On essaie de deviner si c'est le cas (peu probable avec Speckit).
              pass
 
@@ -2647,10 +2647,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         
         return "\n\n".join(merged_blocks)
 
-    # route_after_diagnostic supprimé — diagnostic va toujours vers task_enforcer
+    # route_after_diagnostic supprime ? diagnostic va toujours vers task_enforcer
             
     def _check_typescript_installed(self, project_dir: Path) -> bool:
-        """Vérifie si typescript est installé dans le projet."""
+        """Verifie si typescript est installe dans le projet."""
         ts_path = project_dir / "node_modules" / "typescript"
         return ts_path.exists()
 
@@ -2666,7 +2666,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             return ""
 
     def _get_cached_hash(self, project_dir: Path) -> str:
-        """Récupère le hash stocké en cache (si existant)."""
+        """Recupere le hash stocke en cache (si existant)."""
         hash_file = project_dir / ".speckit_hash"
         if hash_file.exists():
             try:
@@ -2680,38 +2680,38 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         hash_file = pkg_path.parent / ".speckit_hash"
         try:
             hash_file.write_text(current_hash, encoding="utf-8")
-            logger.info(f"💾 Hash package.json sauvegardé: {current_hash[:8]}...")
+            logger.info(f"[SAVE] Hash package.json sauvegarde: {current_hash[:8]}...")
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de sauvegarder le hash: {e}")
+            logger.warning(f"[WARN] Impossible de sauvegarder le hash: {e}")
 
     def _extract_required_files(self, checklist_text: str) -> List[str]:
-        """Extrait les chemins de fichiers obligatoires mentionnés dans la checklist.
+        """Extrait les chemins de fichiers obligatoires mentionnes dans la checklist.
         
-        Stratégie multi-niveau pour extraire les chemins:
+        Strategie multi-niveau pour extraire les chemins:
         
         Pattern 1: Chemin COMPLET en un seul bloc: `backend/src/middlewares/auth.ts`
-        Pattern 2: Fichier + Répertoire séparés: `RegisterPage.tsx` ... `frontend/src/pages/`
+        Pattern 2: Fichier + Repertoire separes: `RegisterPage.tsx` ... `frontend/src/pages/`
         Pattern 3: Fallback simple regex pour les formats minimalistes
-        Pattern 4: Cas spécial - si le chemin commence par `src/`, ajouter le module prefix
+        Pattern 4: Cas special - si le chemin commence par `src/`, ajouter le module prefix
         
-        Returns: Liste des chemins de fichiers trouvés (sans doublons)
+        Returns: Liste des chemins de fichiers trouves (sans doublons)
         """
         import re
         if not checklist_text:
             return []
         
         required_files = []
-        seen_full_paths = set()  # Pour éviter les doublons
+        seen_full_paths = set()  # Pour eviter les doublons
         
         # Traiter chaque ligne de la checklist
         for line in checklist_text.split('\n'):
             if not line.strip():
                 continue
             
-            # Pattern 0: Répertoires seuls (finit par /)
-            # 1. Dans des backticks (priorité)
+            # Pattern 0: Repertoires seuls (finit par /)
+            # 1. Dans des backticks (priorite)
             dir_paths_bt = re.findall(r'`([^` ]+/)`', line)
-            # 2. Sans backticks (si ça commence par un module connu)
+            # 2. Sans backticks (si ca commence par un module connu)
             dir_paths_raw = re.findall(r'(?:^|\s)((?:backend/|frontend/|mobile/)[a-zA-Z0-9_\-./\\]+/)', line)
             
             for path in (dir_paths_bt + dir_paths_raw):
@@ -2723,7 +2723,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             # Pattern 1: Chemin COMPLET avec module inclus (fichiers avec extension)
             full_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)`', line)
             
-            full_path_suffixes = set()  # Garder trace des fichiers trouvés avec chemin complet
+            full_path_suffixes = set()  # Garder trace des fichiers trouves avec chemin complet
             
             for path in full_paths:
                 # Normaliser les backslashes en forward slashes
@@ -2733,26 +2733,26 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 if path.startswith('/api/') or ('/' in path and not path.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml"))):
                     continue
                 
-                # Vérifier que ce n'est pas un chemin partiel comme "src/..."
-                # (sera traité plus tard avec module detection)
+                # Verifier que ce n'est pas un chemin partiel comme "src/..."
+                # (sera traite plus tard avec module detection)
                 if path not in seen_full_paths:
                     required_files.append(path)
                     seen_full_paths.add(path)
                     # Garder trace du suffix du chemin (ex: components/RegisterForm.tsx)
                     full_path_suffixes.add(path.split('/')[-1])
             
-            # Pattern 2: Cas particulier - fileName ET répertoire SÉPARÉS sur la même ligne
+            # Pattern 2: Cas particulier - fileName ET repertoire SEPARES sur la meme ligne
             # Exemple: ... `RegisterPage.tsx` ... dans `frontend/src/pages/`
-            # Stratégie: 
+            # Strategie: 
             # - Trouver tous les backtick'd items
-            # - Séparer les fichiers (.ext) des répertoires (contient /)
-            # - Si 1 fichier et >=1 répertoires, combiner
-            # - MAIS: Ignorer les fichiers déjà trouvés en Pattern 1
+            # - Separer les fichiers (.ext) des repertoires (contient /)
+            # - Si 1 fichier et >=1 repertoires, combiner
+            # - MAIS: Ignorer les fichiers deja trouves en Pattern 1
             
             # Extraire TOUS les items entre backticks
             all_backtick_items = re.findall(r'`([^`]+)`', line)
             
-            # Classer en fichiers et répertoires
+            # Classer en fichiers et repertoires
             files_in_line = []
             dirs_in_line = []
             
@@ -2764,9 +2764,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 if item.startswith('/api/') or ('/' in item and not item.endswith('/') and not item.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml"))):
                     continue
                 
-                # Vérifier si c'est déjà un chemin complet (contient /)
+                # Verifier si c'est deja un chemin complet (contient /)
                 if '/' in item or '\\' in item:
-                    # C'est un chemin (fichier ou répertoire)
+                    # C'est un chemin (fichier ou repertoire)
                     item = item.replace('\\', '/')
                     if item.endswith('/'):
                         dirs_in_line.append(item)
@@ -2777,18 +2777,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             seen_full_paths.add(item)
                 else:
                     # C'est potentiellement un fichier (pas de /)
-                    # MAIS: Ne l'ajouter QUE s'il n'était pas en Pattern 1
+                    # MAIS: Ne l'ajouter QUE s'il n'etait pas en Pattern 1
                     if '.' in item and item not in full_path_suffixes:
                         files_in_line.append(item)
             
-            # Si on a exactement 1 fichier SANS chemin et 1+ répertoires, combiner
+            # Si on a exactement 1 fichier SANS chemin et 1+ repertoires, combiner
             if len(files_in_line) == 1 and len(dirs_in_line) >= 1:
                 filename = files_in_line[0]
-                # Utiliser le répertoire le plus spécifique (le plus long)
+                # Utiliser le repertoire le plus specifique (le plus long)
                 directory = max(dirs_in_line, key=len)
                 combined_path = f"{directory}{filename}".replace('//', '/')
                 
-                # Vérifier que ce chemin n'a pas déjà été extrait
+                # Verifier que ce chemin n'a pas deja ete extrait
                 if combined_path not in seen_full_paths:
                     required_files.append(combined_path)
                     seen_full_paths.add(combined_path)
@@ -2805,9 +2805,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 if combined_path not in seen_full_paths:
                     required_files.append(combined_path)
                     seen_full_paths.add(combined_path)
-                    logger.debug(f"📝 Pattern 3 (simple) matched: {combined_path}")
+                    logger.debug(f"[DOC] Pattern 3 (simple) matched: {combined_path}")
             
-            # Pattern 5: Fichiers de configuration ou autres listés directement
+            # Pattern 5: Fichiers de configuration ou autres listes directement
             list_matches = re.findall(r'([\w\.-]+\.(?:json|ts|tsx|js|jsx|yml|yaml))', line)
             for f in list_matches:
                 if f not in seen_full_paths:
@@ -2815,7 +2815,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     seen_full_paths.add(f)
         
         if required_files:
-            # 🛡️ NORMALIZATION & TYPO FIX
+            # [SAFE] NORMALIZATION & TYPO FIX
             normalized = []
             for f in required_files:
                 # Fix typo 'workfloows'
@@ -2825,70 +2825,70 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     f = f.replace("/workflows/main.yml", "/workflows/ci.yml").replace("/workflows/ci.yaml", "/workflows/ci.yml")
                 normalized.append(f)
             required_files = list(set(normalized))
-            logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
+            logger.info(f"? Fichiers obligatoires identifies dans checklist: {required_files}")
         else:
-            logger.debug(f"📋 Aucun fichier obligatoire identifié dans checklist")
+            logger.debug(f"? Aucun fichier obligatoire identifie dans checklist")
         
         return required_files
 
     def _ensure_required_artifacts(self, required_files: List[str], written_paths: List[str]) -> List[str]:
-        """Crée les fichiers obligatoires manquants en tant que stubs minimalistes.
+        """Cree les fichiers obligatoires manquants en tant que stubs minimalistes.
         
-        Pour chaque fichier obligatoire non écrit, génère un stub approprié.
+        Pour chaque fichier obligatoire non ecrit, genere un stub approprie.
         Args:
             required_files: Liste des chemins de fichiers obligatoires
-            written_paths: Liste des fichiers déjà écrites par persist_code_to_disk
-        Returns: Liste des fichiers créés
+            written_paths: Liste des fichiers deja ecrites par persist_code_to_disk
+        Returns: Liste des fichiers crees
         """
         created_files = []
         
         for required_file in required_files:
-            # 🛡️ FIX: Gérer les fichiers sans extension (ex: user.service -> user.service.ts)
-            # Mais ne pas rajouter .ts si une extension existe déjà
+            # [SAFE] FIX: Gerer les fichiers sans extension (ex: user.service -> user.service.ts)
+            # Mais ne pas rajouter .ts si une extension existe deja
             basename = required_file.split('/')[-1]
             if '.' not in basename and not required_file.endswith('/'):
-                # Déterminer l'extension par défaut
+                # Determiner l'extension par defaut
                 if "backend/src" in required_file or "frontend/src" in required_file:
                     required_file += ".ts"
-                    logger.info(f"🔧 Extension manquante détectée -> Ajouté .ts : {required_file}")
+                    logger.info(f"[FIX] Extension manquante detectee -> Ajoute .ts : {required_file}")
 
             file_path = self.root / required_file
             
-            # Vérifier si le fichier existe déjà (sur disque ou écrit par l'IA)
+            # Verifier si le fichier existe deja (sur disque ou ecrit par l'IA)
             if file_path.exists() or required_file in written_paths:
-                logger.info(f"✅ Fichier obligatoire existant: {required_file}")
+                logger.info(f"[OK] Fichier obligatoire existant: {required_file}")
                 continue
             
-            # Créer les répertoires parents
+            # Creer les repertoires parents
             try:
                 if required_file.endswith('/'):
                     file_path.mkdir(parents=True, exist_ok=True)
                     # Touch .gitkeep to ensure the directory is recognized as "created" by validators
                     (file_path / ".gitkeep").touch()
-                    logger.info(f"✨ Directory artifact created: {required_file}")
+                    logger.info(f"[OK] Directory artifact created: {required_file}")
                     created_files.append(required_file)
                     continue
                 else:
                     file_path.parent.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                logger.error(f"❌ Erreur création répertoires pour {required_file}: {e}")
+                logger.error(f"[ERROR] Erreur creation repertoires pour {required_file}: {e}")
                 continue
             
-            # Générer un stub minimal basé sur l'extension
+            # Generer un stub minimal base sur l'extension
             ext = file_path.suffix.lower()
             stub_content = self._generate_stub_content(ext, required_file)
             
             try:
                 file_path.write_text(stub_content, encoding="utf-8")
-                logger.info(f"✨ Fichier obligatoire créé (stub): {required_file}")
+                logger.info(f"[OK] Fichier obligatoire cree (stub): {required_file}")
                 created_files.append(required_file)
             except Exception as e:
-                logger.error(f"❌ Erreur écriture stub {required_file}: {e}")
+                logger.error(f"[ERROR] Erreur ecriture stub {required_file}: {e}")
         
         return created_files
 
     def _generate_stub_content(self, ext: str, file_path: str) -> str:
-        """Génère un contenu de stub minimaliste approprié au type de fichier.
+        """Genere un contenu de stub minimaliste approprie au type de fichier.
         
         Args:
             ext: Extension du fichier (ex: .ts, .json)
@@ -2935,18 +2935,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             return "// Auto-generated stub file\n"
 
     def _file_exists_in_tree(self, file_to_find: str, file_tree_list: List[str]) -> bool:
-        r"""Cherche un fichier dans l'arborescence avec stratégie multi-niveaux.
+        r"""Cherche un fichier dans l'arborescence avec strategie multi-niveaux.
         
         Essaie de matcher:
         1. Le chemin exact
-        2. Le chemin normalisé (\ → /)
-        3. Juste le nom du fichier n'importe où dans l'arbo
+        2. Le chemin normalise (\ -> /)
+        3. Juste le nom du fichier n'importe ou dans l'arbo
         
         Args:
-            file_to_find: Chemin ou nom du fichier à chercher (ex: "HomePage.tsx" ou "frontend/src/pages/HomePage.tsx")
+            file_to_find: Chemin ou nom du fichier a chercher (ex: "HomePage.tsx" ou "frontend/src/pages/HomePage.tsx")
             file_tree_list: Liste des fichiers dans l'arborescence
         
-        Returns: True si le fichier est trouvé, False sinon
+        Returns: True si le fichier est trouve, False sinon
         """
         file_to_find_normalized = file_to_find.replace('\\', '/')
         file_name_only = file_to_find.split('/')[-1] if '/' in file_to_find else file_to_find
@@ -2970,25 +2970,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         return False
 
     def diagnostic_node(self, state: AgentState) -> dict:
-        """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible).
+        """N?ud : Diagnostics reels (tsc --noEmit ou vite build selon le module cible).
         
-        ⚠️ PROTECTION STRICTE : Si target_module est défini, teste UNIQUEMENT ce module.
-        Ignore complètement les autres modules.
+        [WARN] PROTECTION STRICTE : Si target_module est defini, teste UNIQUEMENT ce module.
+        Ignore completement les autres modules.
         """
-        logger.info("🔍 Exécution des diagnostics réels...")
+        logger.info("[SCAN] Execution des diagnostics reels...")
         import subprocess, re, json
         
-        # ─── DÉTERMINER LE MODULE CIBLE ET L'OUTIL DE BUILD ───
+        # --- DETERMINER LE MODULE CIBLE ET L'OUTIL DE BUILD ---
         target_module = state.get("target_module")
         
         if target_module:
-            # Un module cible est explicitement spécifié
+            # Un module cible est explicitement specifie
             search_dirs = [self.root / target_module]
-            logger.info(f"📍 Diagnostics STRICT : module {target_module} seulement (autres ignorés)")
+            logger.info(f"[TARGET] Diagnostics STRICT : module {target_module} seulement (autres ignores)")
         else:
             # Fallback : tous les modules disponibles
             search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
-            logger.info(f"📍 Diagnostics sur tous les modules")
+            logger.info(f"[TARGET] Diagnostics sur tous les modules")
         
         reports = []
         missing_modules = []
@@ -2998,15 +2998,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             if not (d / "package.json").exists():
                 continue
             
-            # ─── Déterminer l'outil de build ───
+            # --- Determiner l'outil de build ---
             build_tool = self._get_build_tool(d.name if d != self.root else "")
             
-            # ─── VÉRIFICATION PRE-TSC : typescript installé? ───
+            # --- VERIFICATION PRE-TSC : typescript installe? ---
             if build_tool == "tsc":
                 if not self._check_typescript_installed(d):
-                    logger.warning(f"⚠️ TypeScript non installé dans {d.name}. Ajout à la liste des modules manquants.")
+                    logger.warning(f"[WARN] TypeScript non installe dans {d.name}. Ajout a la liste des modules manquants.")
                     missing_modules.append("typescript")
-                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTypeScript non installé dans node_modules. Exécutez: npm_path install --save-dev typescript")
+                    reports.append(f"[TSC {d.name}] [ERROR] ECHEC\nTypeScript non installe dans node_modules. Executez: npm_path install --save-dev typescript")
                     continue
                 
                 try:
@@ -3016,16 +3016,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         cwd=str(d), timeout=120
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
-                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
                     reports.append(f"[TSC {d.name}] {status}\n{output}")
                     
-                    # ⚠️ Tracker si c'est le module cible
+                    # [WARN] Tracker si c'est le module cible
                     if res.returncode != 0:
                         module_errors[d.name or "root"] = "tsc"
                     
-                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    # Detection des modules manquants (UNIQUEMENT pour le module cible)
                     if target_module and d.name != target_module:
-                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                        logger.info(f"[SKIP] Skip detection modules pour {d.name} (non-target)")
                     else:
                         matches = re.findall(r"Cannot find module '([^']+)'", output)
                         if matches:
@@ -3036,9 +3036,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                    reports.append(f"[TSC {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
                 except Exception as e:
-                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\n{str(e)}")
+                    reports.append(f"[TSC {d.name}] [ERROR] ECHEC\n{str(e)}")
             
             elif build_tool == "vite":
                 # Pour Vite, utiliser vite preview ou build
@@ -3049,16 +3049,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         cwd=str(d), timeout=120
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
-                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
                     reports.append(f"[VITE {d.name}] {status}\n{output}")
                     
-                    # ⚠️ Tracker si c'est le module cible
+                    # [WARN] Tracker si c'est le module cible
                     if res.returncode != 0:
                         module_errors[d.name or "root"] = "vite"
                     
-                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    # Detection des modules manquants (UNIQUEMENT pour le module cible)
                     if target_module and d.name != target_module:
-                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                        logger.info(f"[SKIP] Skip detection modules pour {d.name} (non-target)")
                     else:
                         matches = re.findall(r"Cannot find module '([^']+)'", output)
                         if matches:
@@ -3069,9 +3069,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[VITE {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                    reports.append(f"[VITE {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
                 except Exception as e:
-                    reports.append(f"[VITE {d.name}] ❌ ÉCHEC\n{str(e)}")
+                    reports.append(f"[VITE {d.name}] [ERROR] ECHEC\n{str(e)}")
             
             elif build_tool == "next":
                 # Pour Next.js, utiliser npm run build ou next build
@@ -3082,16 +3082,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         cwd=str(d), timeout=120
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
-                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
                     reports.append(f"[NEXT {d.name}] {status}\n{output}")
                     
-                    # ⚠️ Tracker si c'est le module cible
+                    # [WARN] Tracker si c'est le module cible
                     if res.returncode != 0:
                         module_errors[d.name or "root"] = "next"
                     
-                    # Détection des modules manquants (UNIQUEMENT pour le module cible)
+                    # Detection des modules manquants (UNIQUEMENT pour le module cible)
                     if target_module and d.name != target_module:
-                        logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+                        logger.info(f"[SKIP] Skip detection modules pour {d.name} (non-target)")
                     else:
                         matches = re.findall(r"Cannot find module '([^']+)'", output)
                         if matches:
@@ -3102,34 +3102,34 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                    reports.append(f"[NEXT {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
                 except Exception as e:
-                    reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\n{str(e)}")
+                    reports.append(f"[NEXT {d.name}] [ERROR] ECHEC\n{str(e)}")
         
-        logger.info("🛠️ Diagnostics terminés.")
+        logger.info("?? Diagnostics termines.")
         
-        # ⚠️ Si target_module est défini, retourner AUSSI info sur les erreurs non-target
+        # [WARN] Si target_module est defini, retourner AUSSI info sur les erreurs non-target
         non_target_errors = {k: v for k, v in module_errors.items() if k != target_module}
         if non_target_errors and target_module:
-            logger.warning(f"⚠️ Erreurs détectées dans modules non-cibles (IGNORÉES): {non_target_errors}")
+            logger.warning(f"[WARN] Erreurs detectees dans modules non-cibles (IGNOREES): {non_target_errors}")
         
         return {
             "terminal_diagnostics": "\n".join(reports),
             "missing_modules": list(set(missing_modules)),
-            "non_target_errors": non_target_errors  # Pour éviter buildfix sur ces erreurs
+            "non_target_errors": non_target_errors  # Pour eviter buildfix sur ces erreurs
         }
     
     def dependency_resolver_node(self, state: AgentState) -> dict:
-        """Nœud : Détection proactive des dépendances manquantes via analyse d'imports.
+        """N?ud : Detection proactive des dependances manquantes via analyse d'imports.
         
-        Scanne les fichiers source pour détecter les imports (import/require statements)
-        et compare avec package.json pour identifier les dépendances manquantes.
-        Cela prévient les erreurs TypeScript "Cannot find module" avant compilation.
+        Scanne les fichiers source pour detecter les imports (import/require statements)
+        et compare avec package.json pour identifier les dependances manquantes.
+        Cela previent les erreurs TypeScript "Cannot find module" avant compilation.
         """
         import os, json, re
         from pathlib import Path
         
-        logger.info("🔎 Analyse proactive des dépendances (Dependency Resolver)...")
+        logger.info("? Analyse proactive des dependances (Dependency Resolver)...")
         
         target_module = state.get("target_module")
         search_dirs = []
@@ -3138,9 +3138,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             module_path = self.root / target_module
             if module_path.exists():
                 search_dirs = [module_path]
-                logger.info(f"📍 Resolver STRICT (target: {target_module}) - Scanning only this module")
+                logger.info(f"[TARGET] Resolver STRICT (target: {target_module}) - Scanning only this module")
             else:
-                logger.warning(f"⚠️ Target module {target_module} untrouvable. Fallback scan root.")
+                logger.warning(f"[WARN] Target module {target_module} untrouvable. Fallback scan root.")
                 search_dirs = [self.root]
         else:
             # Fallback scan ALL available modules if no target set
@@ -3148,7 +3148,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             for d in ["backend", "frontend", "mobile"]:
                 if (self.root / d).exists():
                     search_dirs.append(self.root / d)
-            logger.info(f"📍 Resolver scanning all modules (no target set)")
+            logger.info(f"[TARGET] Resolver scanning all modules (no target set)")
         
         detected_missing = []
         
@@ -3161,7 +3161,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             if not pkg_path.exists():
                 continue
             
-            # Lire les dépendances du package.json
+            # Lire les dependances du package.json
             try:
                 pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
                 installed = set()
@@ -3219,12 +3219,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 else:
                     pkg_name = imp
                 
-                # Vérifier si le package est installé
+                # Verifier si le package est installe
                 if pkg_name not in installed:
-                    logger.warning(f"⚠️ Module manquant détecté (via import): {pkg_name} (source: {imp})")
+                    logger.warning(f"[WARN] Module manquant detecte (via import): {pkg_name} (source: {imp})")
                     detected_missing.append(pkg_name)
         
-        # 🔴 Liste officielle des Built-ins Node.js (Filtrage)
+        # ? Liste officielle des Built-ins Node.js (Filtrage)
         NODE_BUILTINS = {
             "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
             "constants", "crypto", "dgram", "dns", "domain", "events", "fs", "fs/promises",
@@ -3235,16 +3235,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             "tty", "url", "util", "util/types", "v8", "vm", "wasi", "worker_threads", "zlib"
         }
         
-        # Fusionner avec les modules manquants détectés par diagnostic_node
+        # Fusionner avec les modules manquants detectes par diagnostic_node
         all_missing = list(set(detected_missing + state.get("missing_modules", [])))
         
         # Filtrer les built-ins Node.js
         all_missing = [m for m in all_missing if m not in NODE_BUILTINS and not m.startswith("node:")]
         
         if all_missing:
-            logger.info(f"🎯 Modules à installer: {all_missing}")
+            logger.info(f"[GOAL] Modules a installer: {all_missing}")
         else:
-            logger.info("✅ Aucun module manquant détecté.")
+            logger.info("[OK] Aucun module manquant detecte.")
         
         return {
             "missing_modules": all_missing
@@ -3253,55 +3253,55 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
     def route_from_install_deps(self, state: AgentState) -> str:
         """
-        🔴 PROTECTION STRUCTURALE: Casse la boucle Diagnostics → TaskEnforcer → InstallDeps → Diagnostics
+        ? PROTECTION STRUCTURALE: Casse la boucle Diagnostics -> TaskEnforcer -> InstallDeps -> Diagnostics
         
-        Après install_deps_node, décide:
-        - S'il y a vraiment des modules manquants → retour à diagnostic
-        - Sinon ou cycle max atteint → sortie vers verify (fin)
+        Apres install_deps_node, decide:
+        - S'il y a vraiment des modules manquants -> retour a diagnostic
+        - Sinon ou cycle max atteint -> sortie vers verify (fin)
         """
-        # 🛡️ Compteur de cycles: si trop de cycles dépendances, sortir
+        # [SAFE] Compteur de cycles: si trop de cycles dependances, sortir
         dep_cycles = state.get("dependency_cycles", 0)
         if dep_cycles >= MAX_DEPENDENCY_CYCLES:
-            logger.warning(f"⚠️ Dependency cycle limit reached ({MAX_DEPENDENCY_CYCLES} cycles). Breaking cycle.")
+            logger.warning(f"[WARN] Dependency cycle limit reached ({MAX_DEPENDENCY_CYCLES} cycles). Breaking cycle.")
             state["missing_modules"] = []
             return "verify_node"
         
         state["dependency_cycles"] = dep_cycles + 1
-        logger.debug(f"📊 Dependency cycle {state['dependency_cycles']}/{MAX_DEPENDENCY_CYCLES}")
+        logger.debug(f"[STAT] Dependency cycle {state['dependency_cycles']}/{MAX_DEPENDENCY_CYCLES}")
         
-        # Si scanner a trouvé 0 modules → pas de raison de re-scanner
+        # Si scanner a trouve 0 modules -> pas de raison de re-scanner
         scanner_missing = state.get("scanner_missing_modules", [])
         if not scanner_missing:
-            logger.info("✅ Scanner confirme: 0 modules manquants après install_deps. Exiting dependency loop.")
+            logger.info("[OK] Scanner confirme: 0 modules manquants apres install_deps. Exiting dependency loop.")
             state["missing_modules"] = []
             return "verify_node"
         
         # Sinon, on relance le diagnostic
-        logger.warning(f"🔄 Retour à diagnostics pour vérifier installation de {scanner_missing}...")
+        logger.warning(f"[AI] Retour a diagnostics pour verifier installation de {scanner_missing}...")
         return "diagnostic_node"
 
     def route_after_enf(self, state: AgentState) -> str:
-        """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles.
+        """Route apres TaskEnforcer : verifie a la fois les erreurs TSC et structurelles.
         
-        ⚠️ PROTECTIONS MULTI-NIVEAUX:
+        [WARN] PROTECTIONS MULTI-NIVEAUX:
         - graph_steps: limite totale des cycles du graphe
-        - scanner_missing: source de vérité (TOOLS > LLM)
+        - scanner_missing: source de verite (TOOLS > LLM)
         - TEST_LIBS filter: ignore les modules de test halluciner
-        - dep_attempts: limite des tentatives d'installation des dépendances
+        - dep_attempts: limite des tentatives d'installation des dependances
         - error_count: limite des essais de correction
-        - state_history: détecte les boucles infinies (même état répété)
+        - state_history: detecte les boucles infinies (meme etat repete)
         """
         
-        # 🛡️ PROTECTION NIVEAU 1: Limite globale des cycles du graphe
+        # [SAFE] PROTECTION NIVEAU 1: Limite globale des cycles du graphe
         graph_steps = state.get("graph_steps", 0)
         if graph_steps >= MAX_GRAPH_STEPS:
-            logger.error(f"🚨 Graph execution limit reached ({MAX_GRAPH_STEPS} steps). Exiting to verify.")
+            logger.error(f"? Graph execution limit reached ({MAX_GRAPH_STEPS} steps). Exiting to verify.")
             return "verify_node"
         
         state["graph_steps"] = graph_steps + 1
-        logger.debug(f"📊 Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
+        logger.debug(f"[STAT] Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
         
-        # 🛡️ PROTECTION NIVEAU 1B: Détection de boucle infinie (même état répété)
+        # [SAFE] PROTECTION NIVEAU 1B: Detection de boucle infinie (meme etat repete)
         current_state_key = f"{state.get('validation_status', 'UNKNOWN')}|{len(state.get('missing_modules', []))}|{state.get('error_count', 0)}"
         
         # Initialize state_history if None (safe handling of Optional type)
@@ -3310,26 +3310,26 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         if state_history and state_history[-1] == current_state_key:
             repeats = state.get("repeated_state_count", 0) + 1
             state["repeated_state_count"] = repeats
-            logger.warning(f"🔄 État répétitif détecté #{repeats}: {current_state_key}")
+            logger.warning(f"[AI] Etat repetitif detecte #{repeats}: {current_state_key}")
             
-            # Après 2 répétitions du même état (3 occurrences), abort
+            # Apres 2 repetitions du meme etat (3 occurrences), abort
             if repeats >= 2:
-                logger.error(f"🛑 PRIORITÉ 3 FIX: Boucle infinie détectée (état répété {repeats+1} fois). Abort vers verify_node.")
+                logger.error(f"[STOP] PRIORITE 3 FIX: Boucle infinie detectee (etat repete {repeats+1} fois). Abort vers verify_node.")
                 return "verify_node"
         else:
             state["repeated_state_count"] = 0
         
         state_history.append(current_state_key)
-        # Garder seulement les 10 derniers états pour mémoire
+        # Garder seulement les 10 derniers etats pour memoire
         if len(state_history) > 10:
             state_history.pop(0)
         state["state_history"] = state_history
         
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         
-        # PROTECTION ARCHITECTURALE: PRIORITÉ 4 FIX
-        # Hiérarchie de vérité stricte: SCANNER > NPM > LLM
-        # 1. SCANNER: Vérité absolue (file_tree, filesystem scans)
+        # PROTECTION ARCHITECTURALE: PRIORITE 4 FIX
+        # Hierarchie de verite stricte: SCANNER > NPM > LLM
+        # 1. SCANNER: Verite absolue (file_tree, filesystem scans)
         # 2. NPM: Source primaire (package.json, node_modules, npm ls)
         # 3. LLM: Source secondaire (peut halluciner, bugs, obsol imports)
         
@@ -3337,12 +3337,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         npm_missing = state.get("npm_report_missing", [])  # from npm diagnostic
         llm_missing = state.get("missing_modules", [])
         
-        logger.debug(f"📊 Hiérarchie verfication de depend: scanner={scanner_missing}, npm={npm_missing}, llm={llm_missing}")
+        logger.debug(f"[STAT] Hierarchie verfication de depend: scanner={scanner_missing}, npm={npm_missing}, llm={llm_missing}")
         
         # NIVEAU 1: SCANNER > NPM (Si scanner dit 0, ignorer npm)
         if not scanner_missing and npm_missing:
-            logger.info(f"🔍 SCANNER > NPM: Scanner confirme 0 modules, NPM signale {npm_missing}. Voix conflictante => relance npm diagnostic.")
-            # Ne pas ignorer complètement, mais signaler pour debug future
+            logger.info(f"[SCAN] SCANNER > NPM: Scanner confirme 0 modules, NPM signale {npm_missing}. Voix conflictante => relance npm diagnostic.")
+            # Ne pas ignorer completement, mais signaler pour debug future
             npm_missing = []
         
         # NIVEAU 2: (SCANNER + NPM) > LLM
@@ -3350,18 +3350,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         
         if not effective_missing and llm_missing:
             # Le LLM contredit le scanner + npm
-            logger.info(f"🧠 (SCANNER+NPM) > LLM: Tools confirment 0 modules, LLM signale {llm_missing}. Probablement hallucination.")
-            logger.info(f"   (modules halluciner: {llm_missing} - ignorés car non-détectés par scanner/npm)")
+            logger.info(f"[CORE] (SCANNER+NPM) > LLM: Tools confirment 0 modules, LLM signale {llm_missing}. Probablement hallucination.")
+            logger.info(f"   (modules halluciner: {llm_missing} - ignores car non-detectes par scanner/npm)")
             state["missing_modules"] = []
             llm_missing = []
         elif llm_missing and effective_missing:
             # LLM propose davantage que tools
             superset_from_llm = set(llm_missing) - set(effective_missing)
             if superset_from_llm:
-                logger.info(f"⚠️ LLM propose modules non-confirmes par tools: {list(superset_from_llm)}. En suspicion.")
+                logger.info(f"[WARN] LLM propose modules non-confirmes par tools: {list(superset_from_llm)}. En suspicion.")
                 llm_missing = list(set(llm_missing) & set(effective_missing))  # Intersection seulement
         
-        # 🛡️ Filtrer les modules de test (hallucinations classiques du LLM)
+        # [SAFE] Filtrer les modules de test (hallucinations classiques du LLM)
         TEST_LIBS = {
             "@testing-library/react-hooks",
             "@testing-library/react",
@@ -3376,118 +3376,118 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             filtered_missing = [m for m in llm_missing if m not in TEST_LIBS]
             if len(filtered_missing) < len(llm_missing):
                 removed = set(llm_missing) - set(filtered_missing)
-                logger.info(f"🧪 Modules de test ignorés (hallucinations classiques): {list(removed)}")
+                logger.info(f"[TEST] Modules de test ignores (hallucinations classiques): {list(removed)}")
             state["missing_modules"] = filtered_missing
             llm_missing = filtered_missing
         
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         
         target_module = state.get("target_module")
         terminal_diag = state.get("terminal_diagnostics", "")
         
-        # ⚠️ Extraction des erreurs cibles vs non-cibles
+        # [WARN] Extraction des erreurs cibles vs non-cibles
         non_target_errors = state.get("non_target_errors", {})
         target_module_in_errors = target_module in non_target_errors or (not target_module and "root" in non_target_errors)
         
-        # Vérifier si TSC est réussie POUR LE MODULE CIBLE
+        # Verifier si TSC est reussie POUR LE MODULE CIBLE
         has_tsc_errors_in_target = False
         if target_module:
             # Chercher seulement "[TSC backend]" ou "[VITE backend]" dans les rapports
-            has_tsc_errors_in_target = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag
-            logger.info(f"📍 Erreurs TSC dans module cible ({target_module}): {has_tsc_errors_in_target}")
+            has_tsc_errors_in_target = f"[TSC {target_module}] [ERROR]" in terminal_diag or f"[VITE {target_module}] [ERROR]" in terminal_diag
+            logger.info(f"[TARGET] Erreurs TSC dans module cible ({target_module}): {has_tsc_errors_in_target}")
         else:
-            has_tsc_errors_in_target = "❌ ÉCHEC" in terminal_diag
+            has_tsc_errors_in_target = "[ERROR] ECHEC" in terminal_diag
         
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         has_missing_modules = len(llm_missing) > 0
         
         if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors_in_target or has_structure_errors or has_missing_modules):
-            logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
+            logger.error(f"[STOP] Limite de tentatives atteinte ({MAX_RETRIES}).")
             return "verify_node"
             
         if has_missing_modules:
-            # 🛡️ PRIORITÉ 1: Casser la boucle structurelle immédiatement
-            # Après 1 tentative échouée d'installation, déléguer à verify_node
+            # [SAFE] PRIORITE 1: Casser la boucle structurelle immediatement
+            # Apres 1 tentative echouee d'installation, deleguer a verify_node
             dep_attempts = state.get("dep_install_attempts", 0)
             if dep_attempts >= 1:
-                logger.error(f"🛑 ABORT: Tentative d'installation des dépendances #{dep_attempts} a échoué. Boucle détectée. Route vers verify_node.")
+                logger.error(f"[STOP] ABORT: Tentative d'installation des dependances #{dep_attempts} a echoue. Boucle detectee. Route vers verify_node.")
                 return "verify_node"
             else:
-                logger.warning(f"📦 Modules manquants détectés {llm_missing}. Tentative d'auto-installation (1/1).")
+                logger.warning(f"? Modules manquants detectes {llm_missing}. Tentative d'auto-installation (1/1).")
                 return "install_deps_node"
             
         if has_structure_errors:
-            logger.warning("🔨 Échec de validation structurelle : route vers verify_node pour avorter.")
+            logger.warning("[FIX] Echec de validation structurelle : route vers verify_node pour avorter.")
             return "verify_node"
             
-        # ⚠️ CHANGE : Ne déclencher buildfix QUE si la cible a des erreurs
+        # [WARN] CHANGE : Ne declencher buildfix QUE si la cible a des erreurs
         if has_tsc_errors_in_target:
-            logger.warning(f"🐛 Erreurs TypeScript dans module cible ({target_module}): route vers buildfix_node.")
+            logger.warning(f"[BUG] Erreurs TypeScript dans module cible ({target_module}): route vers buildfix_node.")
             return "buildfix_node"
         elif target_module and non_target_errors:
-            logger.warning(f"⚠️ Erreurs dans modules non-cibles IGNORÉES: {non_target_errors}. Validation continue.")
+            logger.warning(f"[WARN] Erreurs dans modules non-cibles IGNOREES: {non_target_errors}. Validation continue.")
             return "verify_node"
             
         return "verify_node"
 
     def route_after_verify(self, state: AgentState) -> str:
-        """Route après audit: APPROUVÉ → END, REJETÉ → retry impl_node (si < MAX_RETRIES)."""
+        """Route apres audit: APPROUVE -> END, REJETE -> retry impl_node (si < MAX_RETRIES)."""
         error_count = state.get("error_count", 0)
         validation_status = state.get("validation_status", "")
         
-        if validation_status == "APPROUVÉ":
-            logger.info(f"✅ AUDIT APPROVED: Task complete!")
+        if validation_status == "APPROUVE":
+            logger.info(f"[OK] AUDIT APPROVED: Task complete!")
             return END
         
         if error_count >= MAX_RETRIES:
-            logger.error(f"🛑 AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
+            logger.error(f"[STOP] AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
             audit_history = state.get('audit_errors_history', [])
-            # 🛡️ Logic logic: only log real errors
+            # [SAFE] Logic logic: only log real errors
             filtered_errors = [e for e in audit_history if "aucune alerte" not in e.lower() and "none" not in e.lower()]
             if filtered_errors:
-                logger.error(f"❌ Audit errors: {filtered_errors}")
+                logger.error(f"[ERROR] Audit errors: {filtered_errors}")
             else:
-                logger.info("✅ Audit history contains no significant alerts.")
+                logger.info("[OK] Audit history contains no significant alerts.")
             return END
         
-        logger.warning(f"⏮️ AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
+        logger.warning(f"[BACK] AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
         return "impl_node"
         
     def route_after_impl(self, state: AgentState) -> str:
-        """Détermine la route après l'implémentation (génération brute)."""
+        """Determine la route apres l'implementation (generation brute)."""
         validation_status = state.get("validation_status", "")
         retry_count = state.get("retry_count", 0)
         
-        if validation_status == "REJETÉ":
-            # 🛡️ RETRY LIMIT : Prevent infinite loops in impl_node
+        if validation_status == "REJETE":
+            # [SAFE] RETRY LIMIT : Prevent infinite loops in impl_node
             if retry_count >= MAX_RETRIES:
-                logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in impl_node. Stopping retries.")
+                logger.error(f"[STOP] MAX_RETRIES ({MAX_RETRIES}) reached in impl_node. Stopping retries.")
                 logger.error(f"Last error: {state.get('last_error', 'Unknown')}")
                 # Return to audit anyway to show the error
                 return "verify_node"
             
             # Si le LLM a fait une erreur stupide (JSON invalide, etc.)
-            logger.warning(f"🔨 Échec de génération (impl_node), retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
+            logger.warning(f"[FIX] Echec de generation (impl_node), retour a impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
             return "impl_node"
         
-        # Si la génération a réussi, on procède à l'ArchitectureGuard
+        # Si la generation a reussi, on procede a l'ArchitectureGuard
         return "architecture_guard_node"
 
     def route_after_arch_guard(self, state: AgentState) -> str:
-        """Détermine la route après l'ArchitectureGuard."""
+        """Determine la route apres l'ArchitectureGuard."""
         status = state.get("arch_guard_status")
         retry_count = state.get("retry_count", 0)
         
         if status == "FAILED":
-            # 🛡️ RETRY LIMIT : Prevent infinite loops
+            # [SAFE] RETRY LIMIT : Prevent infinite loops
             if retry_count >= MAX_RETRIES:
-                logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in arch_guard. Stopping retries.")
+                logger.error(f"[STOP] MAX_RETRIES ({MAX_RETRIES}) reached in arch_guard. Stopping retries.")
                 return "verify_node"
             
-            logger.warning(f"🔨 Échec de validation architecturale, retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
+            logger.warning(f"[FIX] Echec de validation architecturale, retour a impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
             return "impl_node"
             
-        # Si la validation architecturale réussit, on passe au PathGuard, qui est directement chaîné (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.
+        # Si la validation architecturale reussit, on passe au PathGuard, qui est directement chaine (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.
         return "persist_node"
 
     def _build_graph(self):
@@ -3535,15 +3535,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
         self.graph_builder.add_edge("validate_dependency_node", "install_deps_node")
         
-        # 🔴 PROTECTION STRUCTURALE: Conditional edge après install_deps pour casser la boucle
-        # Si scanner_missing_modules est vide → sorte du cycle vers verify_node
-        # Sinon → retour à diagnostic_node pour vérifier installation
+        # ? PROTECTION STRUCTURALE: Conditional edge apres install_deps pour casser la boucle
+        # Si scanner_missing_modules est vide -> sorte du cycle vers verify_node
+        # Sinon -> retour a diagnostic_node pour verifier installation
         self.graph_builder.add_conditional_edges("install_deps_node", self.route_from_install_deps, {
             "diagnostic_node": "diagnostic_node",
             "verify_node": "verify_node"
         })
         
-        # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
+        # diagnostic -> task_enforcer -> route (buildfix, verify, impl, install_deps)
         self.graph_builder.add_edge("diagnostic_node", "task_enforcer_node")
         self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {
             "buildfix_node": "buildfix_node", 
@@ -3552,11 +3552,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             "install_deps_node": "install_deps_node"
         })
         
-        # buildfix → diagnostic (verify fix worked, then decide next step)
+        # buildfix -> diagnostic (verify fix worked, then decide next step)
         # Don't loop back to dependency_resolver or we'll re-detect same modules infinitely
         self.graph_builder.add_edge("buildfix_node", "diagnostic_node")
         
         self.graph_builder.add_conditional_edges("verify_node", self.route_after_verify, {END: END, "impl_node": "impl_node"})
 
         self.app = self.graph_builder.compile()
-        logger.info("🧠 Cerveau LangGraph compilé - Nouvelle Architecture.")
+        logger.info("[CORE] Cerveau LangGraph compile - Nouvelle Architecture.")

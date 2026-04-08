@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
+from datetime import datetime
 import json
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,9 @@ class ConstitutionManager:
     def generate_constitution(self, user_request: str, design_style: str = "premium") -> str:
         """Produit la Constitution (Architecture, Standards, Stack) à partir d'une demande utilisateur."""
         logger.info(f"Analyse de la demande utilisateur avec style de design {design_style}...")
+        
+        # Récupérer la date du jour
+        current_date = datetime.now().strftime("%Y-%m-%d")
         
         # Charger les préférences de stack depuis le lock
         lock_file = self.root / ".spec-lock.json"
@@ -38,6 +42,8 @@ class ConstitutionManager:
 
         system_prompt = f"""Tu es l'Architecte Suprême du framework Speckit.Factory.
             Ta mission est de transformer une demande utilisateur en une CONSTITUTION rigoureuse.
+            
+            DATE DU JOUR : {current_date}
             
             La Constitution doit impérativement définir :
             1. L'Architecture (Folders, Layers)
@@ -84,12 +90,17 @@ class ConstitutionManager:
         """Amende la Constitution existante (ou la crée) pour ajouter une nouvelle fonctionnalité."""
         logger.info("Analyse de la demande technique pour amendement de la Constitution...")
         
+        # Récupérer la date du jour
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
         existing_content = ""
         if self.constitution_path.exists():
             existing_content = self.constitution_path.read_text(encoding="utf-8")
         
         system_prompt = """Tu es l'Architecte de Maintenance de Speckit.Factory.
             Ta mission est d'amender une CONSTITUTION existante pour y intégrer une nouvelle COMPOSANTE (Fonctionnalité).
+            
+            DATE DU JOUR : {current_date}
             
             Tu reçois :
             1. La CONSTITUTION actuelle (si elle existe).

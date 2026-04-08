@@ -1,0 +1,649 @@
+2: # Implémentation du graphe de routage LangGraph
+3: # Ce module orchestre l'interaction entre les sous-agents (Analyse, Implémentation, Vérification)
+28: # ─── Logger configuration (avant tout usage) ───
+32: logger.info(f"[SETUP] npm_path détecté : {npm_path}")
+34: # ─── 0. Configuration des Limites ──────────────────────────────────────────────────
+40: # ─── Packages dépréciés que le LLM hallucine souvent ───
+42:     "@testing-library/react-hooks": "@testing-library/react",  # Déprécié depuis 2020
+47: # ─── Extraction des keywords sémantiques d'une tâche ───
+56:     """Extrait les keywords sémantiques d’un task ID pour le Context Filtering.
+59:         '07_routes_articles_backend' → ['articles']
+60:         '09_auth_login_backend'      → ['auth', 'login']
+61:         '12_gestion_etat_frontend'   → ['gestion', 'etat']
+64:     # Retirer le préfixe numérique (ex: '07_')
+66:     # Découper sur underscores et tirets
+68:     # Filtrer les mots génériques et les mots trop courts
+72: # ─── 🛡️ LLM Quota Error Detection ─────────────────────────────────────────────────
+75:     """Détecte si une exception est due à un quota LLM dépassé.
+77:     Patterns détectés:
+88:     """Extrait le délai de retry recommandé de l'erreur LLM.
+91:         "retryDelay': '60s'" → 60
+92:         "Retry-After: 300" → 300
+95:         Délai en secondes (default: 60s)
+117: # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
+120:     # Variables de contexte partagées (générées une seule fois)
+134:     # Spécifications de design (Générées par GraphicDesign)
+141:     # Résultats des nœuds
+144:     impact_fichiers: List[str] # Liste des fichiers impactés
+145:     validation_status: str # "APPROUVÉ" ou "REJETÉ"
+147:     points_forts: str # Points forts relevés
+148:     alertes: str # Alertes détectées
+149:     feedback_correction: str # Instructions si rejeté
+150:     terminal_diagnostics: str # Erreurs réelles du terminal (build, lint, etc.)
+151:     existing_code_snapshot: str # Fichiers réels lus depuis le disque (pour le mode PATCH)
+156:     audit_errors_history: List[str]  # [SAFE] Historique des erreurs d'audit pour détecter les répétitions
+162:     # Carte sémantique du code (Semantic Code Map)
+166:     # Checklist des sous-tâches
+169:     # Modules manquants détectés par les diagnostics (Auto-installation)
+173:     # Erreurs détectées dans les modules non-cibles (pour éviter boucles)
+176:     # Statistiques de complétion (via TaskEnforcer)
+180:     # Keywords sémantiques extraits du task ID (pour le Context Filtering)
+183:     # Clés dynamiques pour le flux de dépendances et validation (mode LLM post-généré)
+258:             logger.info(f"[DIR] Structure de dossiers garantie ({count} dossiers créés).")
+264:         - "02_setup_backend" → "backend"
+265:         - "03_setup_frontend" → "frontend"
+266:         - "04_setup_mobile" → "mobile"
+267:         - "05_feature_dashboard" → None (utilise tous les modules)
+277:         # Fallback: stratégie heuristique basée sur le numéro
+291:         """Lit `.spec-lock.json` pour récupérer les préférences stack de l'utilisateur."""
+304:         """Extrait les composants mentionnés dans l'instruction de l'utilisateur."""
+306:         cleaned = raw.replace("•", "\n").replace(";", "\n").replace(",", "\n")
+309:             part = line.strip("-• ").strip()
+315:         """Détecte le bon outil de build selon le module et framework.
+336:         """Détecte le framework frontend: 'react', 'vue', ou 'next'.
+338:         Utilise la FileManager pour cohérence.
+345:         """Détecte le type de router Next.js: 'app' (App Router) ou 'pages' (Pages Router).
+362:         """Détecte les dépendances cross-module (ex: frontend dépend du backend).
+378:                 return {"missing_module": "backend", "reason": "Frontend dépend de services/modèles Backend"}
+383:                 return {"missing_module": "frontend", "reason": "Backend dépend de types Frontend"}
+388:         """Ajoute une tâche manquante à l'étape concernée dans etapes.md.
+390:         Stratégie:
+392:           Décocher la subtâche backend et ajouter une tâche à l'étape backend
+398:         # Déterminer l'étape concernée
+403:             # Ajouter une nouvelle tâche non-cochée à l'étape concernée
+404:             msg = f"[Cross-Module] {reason} (détecté depuis {target_module})"
+405:             logger.warning(f"[WARN] Dépendance cross-module détectée: {msg}")
+406:             logger.info(f"[INFO] Ajoute une tâche à l'étape {step_num} : Installer {missing_module}")
+413:                 # Injecter la tâche manquante dans l'étape concernée
+415:                 pattern = f"(## Étape {step_num}.*?)(?=## Étape|$)"
+419:                     # Ajouter la tâche avant la fin de la section
+425:                 logger.info(f"[OK] Tâche ajoutée à etapes.md (Étape {step_num})")
+427:             logger.warning(f"[WARN] Impossible d'ajouter la tâche cross-module : {e}")
+430:         """[SAFE] Appelle la chaîne LLM avec retry + exponential backoff pour éviter les erreurs réseau.
+433:             chain: La chaîne LangChain à invoquer
+434:             invoke_dict: Variables à passer à la chaîne
+441:             Exception: Si toutes les tentatives échouent
+448:                 logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+454:                     logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+457:                     # Dernière tentative échouée
+458:                     logger.error(f"[ERROR] Toutes les {max_attempts} tentatives ont échoué.")
+476:         # 1. Priorité : bloc ```code (format demandé dans le prompt)
+497:         # 1. Priorité : Balises <JSON_OUTPUT> (Format standardisé)
+511:                  # S'il y a un bloc ``` générique au début, on assume que c'est le json
+526:             # Si le code était dans le JSON malencontreusement (ancien format), on le prend
+530:             # Nettoyage final des backticks résiduels dans le code extrait
+537:             logger.error(f"❌ Échec critique du parsing JSON : {str(e)}")
+538:             # On renvoie une erreur explicite pour que le noeud appelant puisse réagir
+539:             raise ValueError(f"Format JSON invalide ou absent dans la réponse de l'IA : {str(e)}")
+541:     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
+544:         """Détecte avec robustesse si une tâche concerne le frontend."""
+555:         logger.info("🔍 Analysis Node: Analyzing user instruction...")
+568:         """Garantit l'arborescence et l'état initial."""
+569:         logger.info("🏗️ Scaffold Node: Ensuring directory structure...")
+575:         logger.info("✨ Project Enhancer: Enriching project brief...")
+583:         """Segmente et améliore la liste des composants."""
+584:         logger.info("🧩 Component Improver: Segmenting UI components...")
+594:         """Détecte le style visuel et les tokens à partir de l'instruction et de la CONSTITUTION."""
+595:         logger.info("👁️ Vision Pattern: Extracting design tokens from context...")
+599:         # 🔗 COMBINED CONTEXT (Instruction + Constitution)
+607:         """Génère le design system et persiste le pattern si custom."""
+608:         logger.info("🎨 Design System: Generating manifest and persisting custom patterns...")
+615:         # 🛡️ PERSISTENCE : Save as custom pattern for GraphicDesign to use
+626:                 logger.info(f"💾 Custom pattern saved and persisted to {pattern_path}")
+628:                 logger.error(f"❌ Impossible de sauvegarder le custom pattern : {e}")
+633:         """Définit les flux d'interactions."""
+634:         logger.info("🌊 UX Flow: Designing interaction flows...")
+644:         logger.info("📜 Constitution Generator: Compiling project constitution...")
+655:         """Nœud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
+656:         logger.info(f"🎨 Début du Design pour la tâche : {state['target_task']}")
+658:         # 🛡️ MANDATORY CHECK: Only run for frontend/UI related tasks
+662:             logger.info("⏭️ Skipping GraphicDesignEngine (backend task)")
+665:         # Initialisation du moteur Design (déplacé APRÈS le check pour éviter de charger le dataset inutilement)
+671:         # On utilise le prompt utilisateur ou la tâche cible pour le design
+680:             # 🖼️ NEW: Generate a framework-specific Skeleton "mould"
+684:             logger.info(f"✅ Design generated: {design_result.get('pattern', 'default')} with Skeleton.")
+687:             logger.error(f"❌ Échec du moteur GraphicDesign : {str(e)}")
+692:         """Nœud 1 : Analyse de conformité et segmentation."""
+693:         logger.info(f"🔍 Début de l'Analyse pour la tâche : {state['target_task']}")
+695:         # ─── EXTRACTION DU MODULE CIBLE ───
+698:             logger.info(f"📍 Module cible identifié : {target_module}")
+702:         # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
+705:         # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
+732:                         logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+734:                         logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+739:                             logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+742:                             logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+752:             # On convertit le dict JSON en string formatée pour l'injecter au noeud suivant
+757:                 f"Intégrité: {result['alerte_integrite']}"
+759:             logger.info("✅ Analyse terminée.")
+761:             # Extraire les keywords sémantiques pour le Context Filtering
+763:             logger.info(f"🔑 Task keywords extractés : {task_keywords}")
+769:                 "audit_errors_history": [],  # 🛡️ Initialize error tracking
+771:                 "task_keywords": task_keywords     # 🎯 Persist keywords for Context Filtering
+774:             error_msg = f"Réponse IA corrompue (Analysis JSON) : {str(e)}"
+775:             logger.error(f"❌ {error_msg}")
+777:                 "validation_status": "REJETÉ",
+783:             logger.error(f"❌ {error_msg}")
+791:         """Lit les fichiers réels du projet sur disque pour le mode PATCH."""
+810:         logger.info(f"📸 Snapshot disque : {len(blocks)} fichiers lus.")
+814:         """Filtre le code_map et file_tree pour réduire le contexte LLM.
+816:         Stratégie de réduction:
+817:         - Extraire SEULEMENT les fichiers pertinents pour la tâche cible
+818:         - Inclure les dépendances détectées  
+819:         - Limiter à ~30-40 fichiers max
+820:         - Idéal pour réduire du contexte 50-70% sans perdre de sémantique
+822:         Le contexte réduit reste suffisant pour la génération avec la semantic map.
+834:         # 1️⃣ EXTRACTION AGRESSIVE des fichiers mentionnés dans analysis
+838:             r'(?:create|créer|modify|modifier|update)\s+([a-zA-Z0-9._\-/\\]+\.[a-zA-Z0-9]+)',
+845:         # 2️⃣ KEYWORDS : préférer ceux persistés en state (calculés dans analysis_node)
+848:             # Fallback : extraire à la volée si l'analyse n'a pas encore réalisé le calcul
+850:         task_words = list(set(task_words))  # Dédupliquer
+852:         # 3️⃣ MATCHING des fichiers basés sur tâche
+853:         # Ex: si tâche ="create_user_form", chercher user, form, User, Form
+860:         # 4️⃣ FICHIERS DE CONFIG obligatoires
+863:             'env', 'types.ts', 'interfaces', '.ts'  # Fichier de types général
+872:         # 5️⃣ PARSER code_map et FILTRER
+882:             # Critère 1: Explicitement mentionné dans analysis
+887:             # Critère 2: Contient un keyword de tâche
+892:             # Critère 3: Est un fichier de config/index important
+897:         # Fallback: si RIEN n'est trouvé relevé, inclure les premiers fichiers pertinents
+899:             # Prioriser les fichiers mentionnés dans analysis ou contenant keywords
+903:                 # Aucune priorité trouvée, prendre les premiers
+909:         # 6️⃣ LIMITER STRICTEMENT la taille: max 35 fichiers
+911:             # Garder les plus pertinents (avec keywords de tâche en priorité)
+917:         # 7️⃣ FILTRER file_tree pour correspondre
+933:         logger.info(f"📊 Context Filtering: {len(code_map_dict)} → {len(filtered_code_map)} files in code_map, " +
+934:                    f"file_tree: ~{len(file_tree_str.split(chr(10)))} → {len(filtered_file_tree)} lines | " +
+981: ## 🧱 THE SKELETON (CRITICAL):
+999:         """Nœud 2 : Génération de code pur (Exécutant)."""
+1000:         logger.info(f"💻 Début de la Génération de code pour la tâche : {state['target_task']}")
+1002:         # Garantie structurelle avant génération
+1005:         # ─── MODE PATCH : Sur les retries, injecter le code réel du disque ───
+1015:                 logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
+1017:                 prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n__FEEDBACK_CORRECTION__"
+1018:                 prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n__EXISTING_CODE_SNAPSHOT__"
+1019:                 prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
+1024:             # 🛡️ FILRAGE DE CONTEXTE : Réduire la taille avant d'envoyer au LLM
+1029:             # 🛡️ CONSTITUTION: JAMAIS TRONQUER - C'est la source de vérité !
+1030:             constitution_content = state["constitution_content"]  # ← ALWAYS COMPLETE AND FULL
+1032:             # 🛡️ TRUNCATION DE existing_code_snapshot si > 10KB (PATCH mode SEULEMENT)
+1035:                 logger.warning(f"⚠️ Existing snapshot truncated from {len(state.get('existing_code_snapshot', ''))} to 9800 chars")
+1037:             # 🛡️ TRUNCATION DE analysis_output si > 5KB (can summarize, not critical)
+1041:                 logger.warning(f"⚠️ Analysis output truncated to 4800 chars")
+1043:             # 🛡️ TRUNCATION DE terminal_diagnostics si > 3KB (can summarize)
+1047:                 logger.info(f"ℹ️ Terminal diagnostics truncated to 2800 chars")
+1049:             # 🎨 FORMAT DESIGN SPEC : Rendre lisible et actionnabel pour le LLM
+1050:             raw_design_spec = state.get("design_spec", {"error": "Non générée"})
+1053:                 logger.info("ℹ️ No design pattern needed (Backend task).")
+1055:                 logger.info(f"🎨 Design pattern ready: {raw_design_spec['pattern']} (with Tailwind + AST)")
+1057:                 logger.warning(f"⚠️ No design pattern found - using defaults")
+1059:             # 🛡️ REMPLACEMENT DIRECT DES VARIABLES : Sans utiliser ChatPromptTemplate
+1084:             # ⚠️ pass directly to model with inline retry
+1091:                     logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+1093:                     logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+1098:                         logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+1101:                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+1111:                 logger.info("✅ PATCH appliqué (merge avec le code existant).")
+1113:                 logger.info("✅ Génération de code terminée.")
+1123:             error_msg = f"Erreur de génération : {str(e)}"
+1124:             logger.error(f"❌ {error_msg}")
+1128:                 "validation_status": "REJETÉ",
+1139:         # 🛡️ SECURITÉ : On extrait les chemins RÉELS des blocs de code
+1140:         # pour éviter que le LLM ne cache un fichier non autorisé en l'omettant de impact_fichiers
+1145:         # Fusionner avec impact_fichiers (fallback et complément)
+1150:                 logger.info(f"🛡️ ArchitectureGuard: Validating {len(paths)} files before persistence...")
+1159:             logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
+1163:                 "validation_status": "REJETÉ",
+1170:         """Nœud : Garde protectrice pour la normalisation et validation des chemins.
+1174:         - Bloquer les chemins non sûrs (traversal, caractères invalides)
+1175:         - Signaler les anomalies détectées
+1176:         - Defense-in-depth: Double vérification avant write
+1178:         Ce nœud insert une couche de défense entre generation et persist.
+1183:         logger.info("🛡️ PathGuard: Validating and normalizing all paths...")
+1187:             logger.debug("✓ No code to validate (empty)")
+1190:         # Instancier FileManager pour accéder aux méthodes de validation
+1204:                 logger.info(f"🔍 Validating path: {original_path}")
+1207:                     # SÉCURITÉ 1 : Détecter les chemins non sûrs
+1209:                         logger.error(f"🛑 Directory traversal detected: {original_path}")
+1218:                         logger.error(f"🛑 Absolute path detected: {original_path}")
+1226:                     # SÉCURITÉ 2 : Normaliser le chemin
+1229:                         logger.info(f"  ✅ Path normalized: {original_path} → {normalized_path}")
+1231:                         # SÉCURITÉ 3 : Valider le chemin normalisé
+1233:                             logger.error(f"🛑 Normalized path fails validation: {normalized_path}")
+1241:                             logger.debug(f"  ✓ Path validation passed")
+1243:                         # Mettre à jour le code avec le chemin normalisé
+1250:                         logger.warning(f"⚠️ Path normalization failed: {e}")
+1258:                     logger.error(f"❌ Unexpected error validating path {original_path}: {e}")
+1265:         # RÉSUMÉ
+1270:             logger.error(f"🛑 PathGuard: {len(critical_issues)} critical issue(s) detected")
+1273:             logger.warning(f"⚠️ PathGuard: {len(warning_issues)} warning(s) detected")
+1276:             logger.info(f"✅ PathGuard: All paths validated successfully")
+1286:         """Nœud : Persistance du code sur le disque + Assurance des artefacts obligatoires.
+1288:         Inclut le diff tracking pour visibilité des changements.
+1292:         logger.info("💾 Persistance des fichiers sur le disque...")
+1301:         logger.info(f"📸 Project snapshot before: {snapshot_before['file_count']} files, {snapshot_before['total_size']} bytes")
+1305:         logger.info(f"✅ {len(written_paths)} fichiers écrits.")
+1307:         # ─── ASSURER LES ARTEFACTS OBLIGATOIRES ───
+1308:         # 🛡️ DÉSACTIVÉ : Ne plus créer les fichiers stub vides
+1309:         # Cela aide les développeurs juniors à ne pas être confus par des fichiers vides/placeholders
+1311:         # Les fichiers obligatoires doivent être générés avec du contenu réel, pas des stubs
+1317:         # Snapshot APRÈS
+1319:         logger.info(f"📸 Project snapshot after: {snapshot_after['file_count']} files, {snapshot_after['total_size']} bytes")
+1323:         logger.info(f"📊 File persistence diff: {file_diff['summary']}")
+1335:         """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés.
+1340:         - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+1345:         logger.info("🔄 Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+1353:         # S'assurer que src/utils/dirname.util.ts existe côté backend
+1370:         # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+1392:                 # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+1396:                     logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+1412:                 # Insérer l'import après les imports existants, ou au début
+1420:                 # Injecter la déclaration __dirname
+1423:                 # On insère juste après les imports
+1443:             # Ignore si se termine déjà par .js, .json, .ts, etc.
+1449:                 # et ne pas ajouter .js si l'extension y est déjà (ou .json, .css etc)
+1465:             # Si le contenu a été modifié, sauvegarder
+1469:                 logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+1471:         # Ajouter le fichier utilitaire à la liste s'il a été créé
+1477:         logger.info(f"✅ ESM Compatibility: {status} ({len(fixed_files)} files modified)")
+1485:         """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés (post-persist).
+1490:         - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+1495:         logger.info("🔄 [POST-PERSIST] Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+1503:         # S'assurer que src/utils/dirname.util.ts existe côté backend
+1520:         # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+1542:                 # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+1546:                     logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+1558:                 # Insérer l'import après les imports existants, ou au début
+1566:                 # Injecter la déclaration __dirname
+1569:                 # On insère juste après les imports
+1587:             # Si le contenu a été modifié, sauvegarder
+1591:                 logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+1593:         # Ajouter le fichier utilitaire à la liste s'il a été créé
+1599:         logger.info(f"✅ ESM Compatibility (post-persist): {status} ({len(fixed_files)} files modified)")
+1607:         """Nœud : Applique le resolver ESM automatique pour ajouter les extensions .js aux imports.
+1609:         Pipeline ESM Post-Génération:
+1611:         2. esm_import_resolver_node (CE NŒUD): Ajoute .js aux imports relatifs
+1612:         3. dependency_resolver_node: Valide les dépendances
+1614:         Ce nœud utilise le resolver ESMImportResolver pour scanner tous les fichiers
+1621:         logger.info("📦 ESM Import Resolver: Ajout des extensions .js aux imports relatifs...")
+1624:             # Vérifier si le projet est en ESM mode
+1636:                 logger.info("ℹ️ Projet non en ESM mode (type != module). Skipping ESM import resolver.")
+1642:             logger.info("🔍 Mode ESM détecté. Scanning et résolution des imports...")
+1644:             # Appliquer le resolver sur les répertoires standards
+1648:             # Générer le rapport
+1653:             report.append("📋 ESM Import Resolver Report")
+1654:             report.append("━" * 50)
+1658:                 report.append(f"✅ Successfully fixed: {len(successful)} files")
+1667:                 report.append(f"❌ Errors in: {len(errors)} files")
+1670:                 report.append("ℹ️ No ESM import fixes needed.")
+1693:         """Nœud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protégeant contre les hallucinations vides du LLM."""
+1697:         logger.info("🏗️ Scaffold Node: Vérification de la structure de base du projet...")
+1701:         # Ce scaffolding n'est fait qu'à l'étape 0-1 de "setup" ou si le dossier est vide
+1702:         # On ne veut pas écraser s'il existe déjà
+1708:                 logger.info("   ↳ Création de backend/package.json")
+1746:                 logger.info("   ↳ Création de backend/src/app.ts (template de base)")
+1757: // Middlewares de sécurité et parsing
+1763: // Logging en développement
+1768: // Routes (à ajouter)
+1773: // Gestion des erreurs (à implémenter)
+1788:                 logger.info("   ↳ Création de frontend/package.json")
+1822:                 logger.info("   ↳ Création de frontend/src/main.tsx (template de base)")
+1839:         """Nœud : Validation TypeScript des fichiers générés (phase post-persist).
+1842:         - Déterminer si le code TypeScript/JavaScript est syntaxiquement valide
+1844:         - Signaler les dépendances manquantes détectées
+1849:         logger.info("📝 TypeScript Validation (post-persist)...")
+1853:             logger.debug("✓ No files written, skipping TypeScript validation")
+1856:         # Déterminer les modules cibles à valider
+1865:             logger.debug("✓ No frontend/backend modules detected in written files")
+1875:                 logger.debug(f"⚠️ No tsconfig.json found in {module}, skipping validation")
+1878:             logger.info(f"🔍 Checking TypeScript in {module}/ module...")
+1881:                 # Exécuter tsc --noEmit pour valider sans émettre
+1908:                                 logger.warning(f"  ❌ {file_path}:{line_num} - {error_msg.strip()}")
+1916:                     logger.warning(f"⚠️ TypeScript found {len(typescript_errors)} error(s) in {module}")
+1918:                     logger.info(f"✅ No TypeScript errors in {module}")
+1921:                 logger.warning(f"⚠️ TypeScript compiler not found in {module} (npm_path install first?)")
+1923:                 logger.error(f"❌ TypeScript validation timeout in {module}")
+1929:                 logger.error(f"❌ Unexpected error during TypeScript validation in {module}: {e}")
+1935:         # Résumé
+1937:             logger.warning(f"📊 TypeScript validation: {len(typescript_errors)} issue(s) found")
+1940:             logger.info(f"✅ TypeScript validation: All modules pass")
+1951:         Valide et répare les dépendances AVANT npm install.
+1953:         🔴 Architecture:
+1954:         1. Utilise SemanticScanner pour détecter les VRAIES dépendances utilisées
+1956:         3. Ajoute les dépendances manquantes à package.json (pas les hallucinations LLM)
+1958:         Résultat: Zéro hallucinations de dépendances, seulement des imports réels.
+1960:         logger.info("🔍 Validation des dépendances (avant npm install)...")
+1977:                     # 🔴 UTILISER LE SCANNER pour détecter les vraies dépendances
+1981:                     # 🔴 Liste officielle des Built-ins Node.js
+1994:                     # 🧹 1. Nettoyer les dépendances actuelles (au cas où le LLM les aurait générées)
+2005:                         logger.info(f"🧹 Nettoyé {len(cleaned_builtins)} Node built-ins de package.json : {', '.join(cleaned_builtins)}")
+2009:                         logger.info(f"✅ {target_dir.name}: Toutes les dépendances sont déclarées et propres.")
+2012:                     # ➕ 2. Ajouter les NOUVELLES dépendances manquantes (filtrées)
+2017:                         # Déterminer si c'est une dev dependency
+2026:                         logger.info(f"➕ Ajouté {pkg} aux {section}")
+2035:                         logger.info(f"✅ package.json mis à jour: {len(fixed_issues)} dépendances ajoutées")
+2038:                     logger.warning(f"⚠️ Erreur validation {target_dir}: {e}")
+2040:             # 🛡️ Filtrer les modules halluciner du LLM (si présents dans state)
+2049:             logger.info(f"✅ Validation terminée. Dépendances du scanner définies dans package.json")
+2052:             logger.error(f"❌ validate_dependency_node error: {e}")
+2055:         # 🛡️ TOUJOURS retourner state
+2059:         """Nœud : Installation des dépendances npm — détection statique (scanner) SEULE source de vérité."""
+2064:         logger.info("📦 Installation des dépendances (npm install)...")
+2066:         # ─── 🛡️ ANTI-BOUCLE NIVEAU 1: Vérifier dep_install_attempts ───
+2069:             logger.warning("⚠️ Dependency install already attempted. Skipping to prevent loops.")
+2075:         # ─── Déterminer le répertoire cible ───
+2080:             # Chercher le premier répertoire avec package.json
+2086:                 logger.warning("⚠️ Aucun package.json trouvé")
+2092:             logger.warning(f"⚠️ package.json non trouvé dans {target_dir}")
+2096:         # 🔴 DÉTECTION STATIQUE: Scanner = SOURCE DE VÉRITÉ
+2097:         # Le scanner analyse les imports RÉELLEMENT utilisés dans le code
+2098:         # C'est la seule vérité fiable. Le LLM peut halluciner, pas le code source.
+2102:         logger.info(f"🔍 Scanner détecté {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
+2104:         # 🛡️ FILTRE DEPRECATED_PACKAGES: Remplacer les packages halluciner/dépréciés
+2110:                     logger.info(f"🔄 Package déprécié {m} → remplacé par {replacement}")
+2114:             missing_from_scanner = list(set(replaced))  # Deduplicate si plusieurs pointent au même replacement
+2116:         # 🛡️ STOCKER LE RÉSULTAT DU SCANNER COMME SOURCE DE VÉRITÉ
+2122:         # 🛡️ Guard: Ensure npm is available before attempting installation
+2124:             logger.error("❌ npm/npm.cmd not found in PATH. Cannot proceed with package validation.")
+2129:         # Vérifier si on part de 0 (scaffold tout frais)
+2132:         # ═══ RÈGLE ARCHITECTURALE ═══
+2133:         # Si le scanner dit 0 → c'est 0, sauf si node_modules manque
+2135:             logger.info("✅ Scanner confirme : aucune dépendance manquante et node_modules présent.")
+2139:         # ─── 🛡️ ANTI-BOUCLE NIVEAU 2: Filtrer les modules déjà tentés ───
+2144:             logger.info(f"⚠️ Tous les modules ont déjà été tentés: {missing_from_scanner}")
+2145:             logger.warning("🛑 Arrêt des tentatives d'installation pour éviter la boucle infinie.")
+2151:             logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
+2153:         # --- Vérification préalable avec npm view ---
+2167:                     logger.warning(f"⚠️ Package {pkg} semble introuvable ou erreur registre. Ignoré.")
+2169:                 logger.warning(f"⚠️ Erreur npm view pour {pkg}: {e}")
+2172:             logger.warning("❌ Aucun package valide à installer.")
+2177:             logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
+2180:             logger.warning(f"🚀 Installation de {len(valid_packages)} modules validés: {valid_packages}...")
+2183:         # 🛡️ Tracker les tentatives avant d'essayer
+2188:                 logger.error("❌ npm not found in PATH")
+2201:                 logger.error(f"❌ Échec npm install (code {result.returncode})")
+2205:                 logger.info(f"✅ Commande npm install terminée avec succès.")
+2206:                 # Vérification post-install physique
+2210:                         # Gérer les scoped packages @foo/bar
+2216:                         logger.info(f"✨ Vérification physique : {len(installed_physically)} modules confirmés dans node_modules.")
+2221:                         logger.warning("⚠️ npm install a réussi mais node_modules semble vide ou incomplet.")
+2223:             logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
+2225:             # ─── 🛡️ Effacer missing_modules APRÈS installation ───
+2228:             # ─── Tracker les modules installés ───
+2233:             logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
+2234:             # Même en cas d'erreur, effacer pour éviter les boucles
+2241:         """Nœud 3 : Audit de sécurité et conformité finale."""
+2243:             logger.error("🛑 Limite de tentatives atteinte (MAX_RETRIES).")
+2244:             # Tolérance structurelle : si on a atteint la limite d'essais TypeScript (buildfix) 
+2245:             # MAIS que l'Agent a réussi à structurer les fichiers et les deps (STRUCTURE_OK)
+2246:             # alors on le marque comme APPROUVÉ avec alerte pour ne pas bloquer tout le projet.
+2248:                 state["validation_status"] = "APPROUVÉ"
+2249:                 state["alertes"] = "Limite de tentatives atteinte. Des erreurs TypeScript mineures peuvent subsister, mais la structure (fichiers/dossiers/routes) a été correctement générée."
+2251:                 state["validation_status"] = "REJETÉ"
+2252:                 state["alertes"] = "Limite de tentatives atteinte et la structure demandée n'est pas conforme."
+2255:         # Rafraîchir le file_tree depuis le disque pour un audit précis
+2265:         logger.info(f"🛡️ Début de l'Audit pour le code généré.")
+2272:             # 🛡️ IMPROVED: Capturer l'état de génération AVANT l'audit
+2276:             # Détection robuste des erreurs TSC/Build
+2279:                  # Erreur si le module cible a échoué
+2280:                  has_build_errors = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag or f"[NEXT {target_module}] ❌" in terminal_diag
+2282:                  # Erreur si n'importe quel module a échoué (fallback)
+2283:                  has_build_errors = "❌ ÉCHEC" in terminal_diag
+2285:             generation_failed = state.get("validation_status") == "REJETÉ" or state.get("last_error", "") or has_build_errors
+2288:             logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
+2290:             # ─── HARD STRUCTURE VALIDATION ───
+2291:             # On respecte l'état calculé par TaskEnforcer ou PathGuard
+2294:             # 🛡️ ANTI-BYPASS: Si le statut est déjà REJETÉ ou FAILED, on ne l'auto-valide pas ici
+2295:             if state.get("validation_status") in ["REJETÉ", "VALIDATION_FAILED"]:
+2297:                 logger.warning(f"⚠️ Structure validée comme FALSE car status={state.get('validation_status')}")
+2300:                 logger.error("❌ Structure validation failed. Aborting audit.")
+2308:             # 🛡️ RETRY avec backoff pour l'audit lui-même
+2314:             # Forcer un score strict basé sur la checklist
+2317:             # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+2341:             # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+2349:                     logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+2351:                     logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+2356:                         logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+2359:                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+2366:             verifier_status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
+2372:             # 🛡️ HARD OVERRIDE: Si des tâches manquent dans la checklist, C'EST REJETÉ
+2374:                 logger.warning(f"⚠️ Audit REJETÉ par système (Checklist incomplète: {missing}/{total_tasks} manquantes). Forçage REJETÉ.")
+2375:                 verifier_status = "REJETÉ"
+2377:             # 🛡️ IMPROVED AUDIT LOGIC:
+2378:             # - Si génération échouée OU structure invalide OU verifier=REJETÉ → REJETÉ
+2379:             # 🛡️ HANDLING "Aucune alerte" FALSE POSITIVE
+2382:             if verifier_status == "REJETÉ" and ("aucune alerte" in alerts_low or alerts_low.strip() in ["none", "n/a", "ras"]):
+2384:                     logger.info("🛡️ Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVÉ.")
+2385:                     verifier_status = "APPROUVÉ"
+2387:             if generation_failed or not structure_valid or verifier_status == "REJETÉ":
+2389:                     logger.warning(f"⚠️ Audit REJETÉ: Il manque encore des fichiers obligatoires.")
+2391:                     logger.warning(f"⚠️ Audit REJETÉ: La génération technique a échoué (TSC errors).")
+2393:                     logger.warning(f"⚠️ Audit REJETÉ: La structure demandée est invalide.")
+2395:                 status = "REJETÉ"
+2402:                 status = "APPROUVÉ"
+2405:             if status == "APPROUVÉ":
+2406:                 logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")
+2408:                     "validation_status": "APPROUVÉ", 
+2411:                     "alertes": result.get('alertes', 'Aucune.' if not generation_failed else 'Génération partiellement échouée Mais structure valide.'),
+2418:                 # 🛡️ TRACK audit errors to detect recurring issues
+2423:                 # 🔍 DETECT RECURRING ERRORS (same error twice = can't fix it automatically)
+2426:                     logger.error(f"🔄 RECURRING ERROR DETECTED: {audit_errors[-1]}")
+2427:                     logger.error(f"🛑 Same error appeared {len([e for e in audit_errors if e == audit_errors[-1]])} times. Stopping retries.")
+2431:                     "validation_status": "REJETÉ", 
+2440:             logger.error(f"❌ Erreur audit : {e}")
+2441:             state["validation_status"] = "REJETÉ"
+2447:         """Nœud de vérification structurelle DÉTERMINISTE (sans LLM)."""
+2448:         logger.info("🛡️ Vérification structurelle (TaskEnforcer - MODE DÉTERMINISTE)...")
+2450:         # 🛡️ PRIORITÉ 2: Source de vérité = filesystem réel vs checklist
+2464:         logger.info(f"📋 Fichiers attendus selon la checklist: {len(expected_files)}")
+2466:         # 3. Extraire les fichiers réellement présents depuis file_tree
+2470:             if line and not line.startswith('│') and not line.startswith('└') and '/' in line:
+2471:                 # Nettoyer les caractères de visualisation
+2472:                 clean_path = re.sub(r'^[\s│└─]*', '', line).strip()
+2476:         logger.info(f"📂 Fichiers détectés dans file_tree: {len(real_files)}")
+2478:         # 4. Calculer la différence (DÉTERMINISTE, pas LLM)
+2482:             logger.warning(f"❌ {len(missing_files)} fichiers manquants détectés:")
+2491:             logger.info(f"✅ Tous les fichiers attendus sont présents ({len(expected_files)} fichiers)")
+2495:         """Nœud de génération de la Semantic Code Map."""
+2496:         logger.info("🗺️ Génération de la Semantic Code Map...")
+2519:         """Nœud de réparation automatique du build."""
+2520:         logger.info("🛠️ Tentative de réparation du build...")
+2543:             # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
+2550:                     logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
+2552:                     logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
+2557:                         logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
+2560:                         logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
+2574:             logger.error(f"🛑 buildfix_node error: {e}")
+2628:                 # Fallback pour le cas où delta ne contient pas de marqueurs de fichiers (si un seul fichier est retourné sans marqueur)
+2629:                 # Mais BuildFix est censé retourner avec marqueurs. Dans le doute, on n'écrase pas tout si on ne peut pas parser.
+2637:              # Si delta n'a pas pu être parsé mais n'est pas vide, c'est peut-être un fichier unique.
+2650:     # route_after_diagnostic supprimé — diagnostic va toujours vers task_enforcer
+2653:         """Vérifie si typescript est installé dans le projet."""
+2669:         """Récupère le hash stocké en cache (si existant)."""
+2683:             logger.info(f"💾 Hash package.json sauvegardé: {current_hash[:8]}...")
+2685:             logger.warning(f"⚠️ Impossible de sauvegarder le hash: {e}")
+2688:         """Extrait les chemins de fichiers obligatoires mentionnés dans la checklist.
+2690:         Stratégie multi-niveau pour extraire les chemins:
+2693:         Pattern 2: Fichier + Répertoire séparés: `RegisterPage.tsx` ... `frontend/src/pages/`
+2695:         Pattern 4: Cas spécial - si le chemin commence par `src/`, ajouter le module prefix
+2697:         Returns: Liste des chemins de fichiers trouvés (sans doublons)
+2704:         seen_full_paths = set()  # Pour éviter les doublons
+2711:             # Pattern 0: Répertoires seuls (finit par /)
+2712:             # 1. Dans des backticks (priorité)
+2714:             # 2. Sans backticks (si ça commence par un module connu)
+2726:             full_path_suffixes = set()  # Garder trace des fichiers trouvés avec chemin complet
+2736:                 # Vérifier que ce n'est pas un chemin partiel comme "src/..."
+2737:                 # (sera traité plus tard avec module detection)
+2744:             # Pattern 2: Cas particulier - fileName ET répertoire SÉPARÉS sur la même ligne
+2746:             # Stratégie: 
+2748:             # - Séparer les fichiers (.ext) des répertoires (contient /)
+2749:             # - Si 1 fichier et >=1 répertoires, combiner
+2750:             # - MAIS: Ignorer les fichiers déjà trouvés en Pattern 1
+2755:             # Classer en fichiers et répertoires
+2767:                 # Vérifier si c'est déjà un chemin complet (contient /)
+2769:                     # C'est un chemin (fichier ou répertoire)
+2780:                     # MAIS: Ne l'ajouter QUE s'il n'était pas en Pattern 1
+2784:             # Si on a exactement 1 fichier SANS chemin et 1+ répertoires, combiner
+2787:                 # Utiliser le répertoire le plus spécifique (le plus long)
+2791:                 # Vérifier que ce chemin n'a pas déjà été extrait
+2808:                     logger.debug(f"📝 Pattern 3 (simple) matched: {combined_path}")
+2810:             # Pattern 5: Fichiers de configuration ou autres listés directement
+2818:             # 🛡️ NORMALIZATION & TYPO FIX
+2828:             logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
+2830:             logger.debug(f"📋 Aucun fichier obligatoire identifié dans checklist")
+2835:         """Crée les fichiers obligatoires manquants en tant que stubs minimalistes.
+2837:         Pour chaque fichier obligatoire non écrit, génère un stub approprié.
+2840:             written_paths: Liste des fichiers déjà écrites par persist_code_to_disk
+2841:         Returns: Liste des fichiers créés
+2846:             # 🛡️ FIX: Gérer les fichiers sans extension (ex: user.service -> user.service.ts)
+2847:             # Mais ne pas rajouter .ts si une extension existe déjà
+2850:                 # Déterminer l'extension par défaut
+2853:                     logger.info(f"🔧 Extension manquante détectée -> Ajouté .ts : {required_file}")
+2857:             # Vérifier si le fichier existe déjà (sur disque ou écrit par l'IA)
+2859:                 logger.info(f"✅ Fichier obligatoire existant: {required_file}")
+2862:             # Créer les répertoires parents
+2868:                     logger.info(f"✨ Directory artifact created: {required_file}")
+2874:                 logger.error(f"❌ Erreur création répertoires pour {required_file}: {e}")
+2877:             # Générer un stub minimal basé sur l'extension
+2883:                 logger.info(f"✨ Fichier obligatoire créé (stub): {required_file}")
+2886:                 logger.error(f"❌ Erreur écriture stub {required_file}: {e}")
+2891:         """Génère un contenu de stub minimaliste approprié au type de fichier.
+2938:         r"""Cherche un fichier dans l'arborescence avec stratégie multi-niveaux.
+2942:         2. Le chemin normalisé (\ → /)
+2943:         3. Juste le nom du fichier n'importe où dans l'arbo
+2946:             file_to_find: Chemin ou nom du fichier à chercher (ex: "HomePage.tsx" ou "frontend/src/pages/HomePage.tsx")
+2949:         Returns: True si le fichier est trouvé, False sinon
+2973:         """Nœud : Diagnostics réels (tsc --noEmit ou vite build selon le module cible).
+2975:         ⚠️ PROTECTION STRICTE : Si target_module est défini, teste UNIQUEMENT ce module.
+2976:         Ignore complètement les autres modules.
+2978:         logger.info("🔍 Exécution des diagnostics réels...")
+2981:         # ─── DÉTERMINER LE MODULE CIBLE ET L'OUTIL DE BUILD ───
+2985:             # Un module cible est explicitement spécifié
+2987:             logger.info(f"📍 Diagnostics STRICT : module {target_module} seulement (autres ignorés)")
+2991:             logger.info(f"📍 Diagnostics sur tous les modules")
+3001:             # ─── Déterminer l'outil de build ───
+3004:             # ─── VÉRIFICATION PRE-TSC : typescript installé? ───
+3007:                     logger.warning(f"⚠️ TypeScript non installé dans {d.name}. Ajout à la liste des modules manquants.")
+3009:                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTypeScript non installé dans node_modules. Exécutez: npm_path install --save-dev typescript")
+3019:                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+3022:                     # ⚠️ Tracker si c'est le module cible
+3026:                     # Détection des modules manquants (UNIQUEMENT pour le module cible)
+3028:                         logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+3039:                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+3041:                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\n{str(e)}")
+3052:                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+3055:                     # ⚠️ Tracker si c'est le module cible
+3059:                     # Détection des modules manquants (UNIQUEMENT pour le module cible)
+3061:                         logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+3072:                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+3074:                     reports.append(f"[VITE {d.name}] ❌ ÉCHEC\n{str(e)}")
+3085:                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+3088:                     # ⚠️ Tracker si c'est le module cible
+3092:                     # Détection des modules manquants (UNIQUEMENT pour le module cible)
+3094:                         logger.info(f"⏭️ Skip détection modules pour {d.name} (non-target)")
+3105:                     reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+3107:                     reports.append(f"[NEXT {d.name}] ❌ ÉCHEC\n{str(e)}")
+3109:         logger.info("🛠️ Diagnostics terminés.")
+3111:         # ⚠️ Si target_module est défini, retourner AUSSI info sur les erreurs non-target
+3114:             logger.warning(f"⚠️ Erreurs détectées dans modules non-cibles (IGNORÉES): {non_target_errors}")
+3119:             "non_target_errors": non_target_errors  # Pour éviter buildfix sur ces erreurs
+3123:         """Nœud : Détection proactive des dépendances manquantes via analyse d'imports.
+3125:         Scanne les fichiers source pour détecter les imports (import/require statements)
+3126:         et compare avec package.json pour identifier les dépendances manquantes.
+3127:         Cela prévient les erreurs TypeScript "Cannot find module" avant compilation.
+3132:         logger.info("🔎 Analyse proactive des dépendances (Dependency Resolver)...")
+3141:                 logger.info(f"📍 Resolver STRICT (target: {target_module}) - Scanning only this module")
+3143:                 logger.warning(f"⚠️ Target module {target_module} untrouvable. Fallback scan root.")
+3151:             logger.info(f"📍 Resolver scanning all modules (no target set)")
+3164:             # Lire les dépendances du package.json
+3222:                 # Vérifier si le package est installé
+3224:                     logger.warning(f"⚠️ Module manquant détecté (via import): {pkg_name} (source: {imp})")
+3227:         # 🔴 Liste officielle des Built-ins Node.js (Filtrage)
+3238:         # Fusionner avec les modules manquants détectés par diagnostic_node
+3245:             logger.info(f"🎯 Modules à installer: {all_missing}")
+3247:             logger.info("✅ Aucun module manquant détecté.")
+3256:         🔴 PROTECTION STRUCTURALE: Casse la boucle Diagnostics → TaskEnforcer → InstallDeps → Diagnostics
+3258:         Après install_deps_node, décide:
+3259:         - S'il y a vraiment des modules manquants → retour à diagnostic
+3260:         - Sinon ou cycle max atteint → sortie vers verify (fin)
+3262:         # 🛡️ Compteur de cycles: si trop de cycles dépendances, sortir
+3265:             logger.warning(f"⚠️ Dependency cycle limit reached ({MAX_DEPENDENCY_CYCLES} cycles). Breaking cycle.")
+3270:         logger.debug(f"📊 Dependency cycle {state['dependency_cycles']}/{MAX_DEPENDENCY_CYCLES}")
+3272:         # Si scanner a trouvé 0 modules → pas de raison de re-scanner
+3275:             logger.info("✅ Scanner confirme: 0 modules manquants après install_deps. Exiting dependency loop.")
+3280:         logger.warning(f"🔄 Retour à diagnostics pour vérifier installation de {scanner_missing}...")
+3284:         """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles.
+3286:         ⚠️ PROTECTIONS MULTI-NIVEAUX:
+3288:         - scanner_missing: source de vérité (TOOLS > LLM)
+3290:         - dep_attempts: limite des tentatives d'installation des dépendances
+3292:         - state_history: détecte les boucles infinies (même état répété)
+3295:         # 🛡️ PROTECTION NIVEAU 1: Limite globale des cycles du graphe
+3298:             logger.error(f"🚨 Graph execution limit reached ({MAX_GRAPH_STEPS} steps). Exiting to verify.")
+3302:         logger.debug(f"📊 Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
+3304:         # 🛡️ PROTECTION NIVEAU 1B: Détection de boucle infinie (même état répété)
+3313:             logger.warning(f"🔄 État répétitif détecté #{repeats}: {current_state_key}")
+3315:             # Après 2 répétitions du même état (3 occurrences), abort
+3317:                 logger.error(f"🛑 PRIORITÉ 3 FIX: Boucle infinie détectée (état répété {repeats+1} fois). Abort vers verify_node.")
+3323:         # Garder seulement les 10 derniers états pour mémoire
+3328:         # ─────────────────────────────────────────────────────────────
+3330:         # PROTECTION ARCHITECTURALE: PRIORITÉ 4 FIX
+3331:         # Hiérarchie de vérité stricte: SCANNER > NPM > LLM
+3332:         # 1. SCANNER: Vérité absolue (file_tree, filesystem scans)
+3340:         logger.debug(f"📊 Hiérarchie verfication de depend: scanner={scanner_missing}, npm={npm_missing}, llm={llm_missing}")
+3344:             logger.info(f"🔍 SCANNER > NPM: Scanner confirme 0 modules, NPM signale {npm_missing}. Voix conflictante => relance npm diagnostic.")
+3345:             # Ne pas ignorer complètement, mais signaler pour debug future
+3353:             logger.info(f"🧠 (SCANNER+NPM) > LLM: Tools confirment 0 modules, LLM signale {llm_missing}. Probablement hallucination.")
+3354:             logger.info(f"   (modules halluciner: {llm_missing} - ignorés car non-détectés par scanner/npm)")
+3361:                 logger.info(f"⚠️ LLM propose modules non-confirmes par tools: {list(superset_from_llm)}. En suspicion.")
+3364:         # 🛡️ Filtrer les modules de test (hallucinations classiques du LLM)
+3379:                 logger.info(f"🧪 Modules de test ignorés (hallucinations classiques): {list(removed)}")
+3383:         # ─────────────────────────────────────────────────────────────
+3388:         # ⚠️ Extraction des erreurs cibles vs non-cibles
+3392:         # Vérifier si TSC est réussie POUR LE MODULE CIBLE
+3396:             has_tsc_errors_in_target = f"[TSC {target_module}] ❌" in terminal_diag or f"[VITE {target_module}] ❌" in terminal_diag
+3397:             logger.info(f"📍 Erreurs TSC dans module cible ({target_module}): {has_tsc_errors_in_target}")
+3399:             has_tsc_errors_in_target = "❌ ÉCHEC" in terminal_diag
+3405:             logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
+3409:             # 🛡️ PRIORITÉ 1: Casser la boucle structurelle immédiatement
+3410:             # Après 1 tentative échouée d'installation, déléguer à verify_node
+3413:                 logger.error(f"🛑 ABORT: Tentative d'installation des dépendances #{dep_attempts} a échoué. Boucle détectée. Route vers verify_node.")
+3416:                 logger.warning(f"📦 Modules manquants détectés {llm_missing}. Tentative d'auto-installation (1/1).")
+3420:             logger.warning("🔨 Échec de validation structurelle : route vers verify_node pour avorter.")
+3423:         # ⚠️ CHANGE : Ne déclencher buildfix QUE si la cible a des erreurs
+3425:             logger.warning(f"🐛 Erreurs TypeScript dans module cible ({target_module}): route vers buildfix_node.")
+3428:             logger.warning(f"⚠️ Erreurs dans modules non-cibles IGNORÉES: {non_target_errors}. Validation continue.")
+3434:         """Route après audit: APPROUVÉ → END, REJETÉ → retry impl_node (si < MAX_RETRIES)."""
+3438:         if validation_status == "APPROUVÉ":
+3439:             logger.info(f"✅ AUDIT APPROVED: Task complete!")
+3443:             logger.error(f"🛑 AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
+3445:             # 🛡️ Logic logic: only log real errors
+3448:                 logger.error(f"❌ Audit errors: {filtered_errors}")
+3450:                 logger.info("✅ Audit history contains no significant alerts.")
+3453:         logger.warning(f"⏮️ AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
+3457:         """Détermine la route après l'implémentation (génération brute)."""
+3461:         if validation_status == "REJETÉ":
+3462:             # 🛡️ RETRY LIMIT : Prevent infinite loops in impl_node
+3464:                 logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in impl_node. Stopping retries.")
+3470:             logger.warning(f"🔨 Échec de génération (impl_node), retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
+3473:         # Si la génération a réussi, on procède à l'ArchitectureGuard
+3477:         """Détermine la route après l'ArchitectureGuard."""
+3482:             # 🛡️ RETRY LIMIT : Prevent infinite loops
+3484:                 logger.error(f"🛑 MAX_RETRIES ({MAX_RETRIES}) reached in arch_guard. Stopping retries.")
+3487:             logger.warning(f"🔨 Échec de validation architecturale, retour à impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
+3490:         # Si la validation architecturale réussit, on passe au PathGuard, qui est directement chaîné (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.
+3538:         # 🔴 PROTECTION STRUCTURALE: Conditional edge après install_deps pour casser la boucle
+3539:         # Si scanner_missing_modules est vide → sorte du cycle vers verify_node
+3540:         # Sinon → retour à diagnostic_node pour vérifier installation
+3546:         # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
+3555:         # buildfix → diagnostic (verify fix worked, then decide next step)
+3562:         logger.info("🧠 Cerveau LangGraph compilé - Nouvelle Architecture.")

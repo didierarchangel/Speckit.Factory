@@ -5,21 +5,21 @@ import json
 from itertools import chain
 from typing import Any, Dict, Iterable, List
 
-# ─── 0. Configuration des Limites ──────────────────────────────────────────────────
+# --- 0. Configuration des Limites ---
 MAX_RETRIES = 3
 MAX_DEP_INSTALL_ATTEMPTS = 3  # Limit dependency install loops
-MAX_GRAPH_STEPS = 10  # 🛡️ Maximum number of graph routing decisions (prevents infinite cycles)
-MAX_DEPENDENCY_CYCLES = 2  # 🛡️ Max cycles in Diagnostics → TaskEnforcer → InstallDeps loop
+MAX_GRAPH_STEPS = 10  # [SAFE] Maximum number of graph routing decisions (prevents infinite cycles)
+MAX_DEPENDENCY_CYCLES = 2  # [SAFE] Max cycles in Diagnostics -> TaskEnforcer -> InstallDeps loop
 
-# ─── Packages dépréciés que le LLM hallucine souvent ───
+# --- Packages deprecies que le LLM hallucine souvent ---
 DEPRECATED_PACKAGES = {
-    "@testing-library/react-hooks": "@testing-library/react",  # Déprécié depuis 2020
+    "@testing-library/react-hooks": "@testing-library/react",  # Deprecie depuis 2020
     "react-test-utils": "@testing-library/react",              # Ancien pattern
     "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
 }
 
 class PatternVisionDetector:
-    """Module UI Pattern Detector (Vision) : détecte les tokens visuels sans dépendance aux émojis."""
+    """Module UI Pattern Detector (Vision) : detecte les tokens visuels sans dependance aux emojis."""
 
     def __init__(self, model: Any = None):
         self.model = model
@@ -45,7 +45,7 @@ class PatternVisionDetector:
     }
 
     def analyze(self, prompt: str, image_meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """Analyse le prompt pour extraire des tokens de design (Version optimisée)."""
+        """Analyse le prompt pour extraire des tokens de design (Version optimisee)."""
         
         # 1. Nettoyage de la commande CLI 'vibe-design'
         clean_context = prompt
@@ -111,7 +111,7 @@ class PatternVisionDetector:
             return self._extract_custom_tokens(prompt, None)
 
     def _extract_custom_tokens(self, text: str, meta: dict | None) -> Dict[str, Any]:
-        """Extraction par expressions régulières (Regex)."""
+        """Extraction par expressions regulieres (Regex)."""
         palette = self._build_palette(text, meta)
             
         lower_text = text.lower()

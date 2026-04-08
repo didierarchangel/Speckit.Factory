@@ -8,6 +8,7 @@ import json
 import shutil
 from pathlib import Path
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
 from typing import Optional, Any
 from pydantic import SecretStr
@@ -130,7 +131,7 @@ def generate_express_project(target_path: Path, db_type: str = "mongodb"):
     
     (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     (src_path / "index.ts").write_text("import express from 'express';\nconst app = express();\napp.listen(5000);\n")
-    click.echo(f"✅ Projet Express configuré (BD: {db_type})")
+    click.echo(f"[OK] Projet Express configure (BD: {db_type})")
 
 def generate_nestjs_project(target_path: Path):
     """Génère la structure de base pour NestJS (100% ESM)."""
@@ -138,7 +139,7 @@ def generate_nestjs_project(target_path: Path):
     src_path = backend_path / "src"
     src_path.mkdir(parents=True, exist_ok=True)
     
-    # ✅ CONFIGURATION ESM POUR NESTJS
+    # [OK] CONFIGURATION ESM POUR NESTJS
     package_json = {
         "name": "backend-nestjs",
         "version": "1.0.0",
@@ -183,16 +184,16 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule)
     const port = process.env.PORT || 3000
     await app.listen(port)
-    console.log(`✅ NestJS app listening on port ${port}`)
+    console.log(`[OK] NestJS app listening on port ${port}`)
 }
 
 bootstrap().catch(err => {
-    console.error('❌ Erreur au démarrage:', err)
+    console.error('[ERROR] Erreur au demarrage:', err)
     process.exit(1)
 })
 """
     (src_path / "main.ts").write_text(main_ts)
-    click.echo("✅ Projet NestJS configuré (ESM + TypeScript)")
+    click.echo("[OK] Projet NestJS configure (ESM + TypeScript)")
 
 def generate_fastapi_project(target_path: Path):
     """Génère la structure pour FastAPI (Python)."""
@@ -225,7 +226,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 """
     (src_path / "main.py").write_text(main_py)
-    click.echo("✅ Projet FastAPI configuré")
+    click.echo("[OK] Projet FastAPI configure")
 
 def generate_flask_project(target_path: Path):
     """Génère la structure pour Flask (Python)."""
@@ -250,7 +251,7 @@ if __name__ == "__main__":
     app.run(debug=True, port=5000)
 """
     (src_path / "main.py").write_text(main_py)
-    click.echo("✅ Projet Flask configuré")
+    click.echo("[OK] Projet Flask configure")
 
 def generate_react_vite_project(target_path: Path):
     """Génère la structure pour React + Vite."""
@@ -280,7 +281,7 @@ def generate_react_vite_project(target_path: Path):
     
     (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     (src_path / "App.tsx").write_text("export default function App() {\n  return <h1>React + Vite</h1>;\n}\n")
-    click.echo("✅ Projet React (Vite) configuré")
+    click.echo("[OK] Projet React (Vite) configure")
 
 def generate_nextjs_project(target_path: Path):
     """Génère la structure pour Next.js."""
@@ -309,7 +310,7 @@ def generate_nextjs_project(target_path: Path):
     
     (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     (app_path / "page.tsx").write_text("export default function Home() {\n  return <main>Next.js Frontend</main>;\n}\n")
-    click.echo("✅ Projet Next.js configuré")
+    click.echo("[OK] Projet Next.js configure")
 
 def generate_vue_vite_project(target_path: Path):
     """Génère la structure pour Vue.js + Vite."""
@@ -337,7 +338,7 @@ def generate_vue_vite_project(target_path: Path):
     
     (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     (src_path / "App.vue").write_text("<template><h1>Vue + Vite</h1></template>\n")
-    click.echo("✅ Projet Vue.js (Vite) configuré")
+    click.echo("[OK] Projet Vue.js (Vite) configure")
 
 # 🗺️ Mappings des générateurs (mise à jour pour supporter BD parameter)
 BACKEND_GENERATORS = {
@@ -367,7 +368,7 @@ def get_recommended_backend(frontend_choice: str) -> str:
 
 @click.group()
 def cli():
-    """🛡️ Speckit.Factory - Constitutional DevOps AI Framework"""
+    """[SAFE] Speckit.Factory - Constitutional DevOps AI Framework"""
     pass
 
 @cli.command()
@@ -380,9 +381,9 @@ def init(path, here):
     # Détection de projet existant (si le dossier n'est pas vide)
     existing_files = [f for f in target_path.glob('*') if f.name not in ['.git', '.speckit', '.gitignore', '.env', '.env.example']]
     if existing_files:
-        click.echo(f"⚠️  ALERTE : Le dossier {target_path.absolute()} contient déjà des fichiers.")
-        click.echo("💡 Si vous souhaitez ajouter une fonctionnalité à ce projet existant,")
-        click.echo("💡 il est recommandé d'utiliser : speckit component \"votre demande\"")
+        click.echo(f"[WARN] ALERTE : Le dossier {target_path.absolute()} contient deja des fichiers.")
+        click.echo("[INFO] Si vous souhaitez ajouter une fonctionnalite a ce projet existant,")
+        click.echo("[INFO] il est recommande d'utiliser : speckit component \"votre demande\"")
         click.echo("---")
     
     # Liste des dossiers à créer selon le protocole
@@ -390,7 +391,7 @@ def init(path, here):
         "Constitution"
     ]
 
-    click.echo(f"🏗️  Création de l'arborescence dans : {target_path.absolute()}")
+    click.echo(f"[INIT] Creation de l'arborescence dans : {target_path.absolute()}")
 
     for folder in structure:
         (target_path / folder).mkdir(parents=True, exist_ok=True)
@@ -403,7 +404,12 @@ def init(path, here):
     factory_root = Path(__file__).parent.parent
     source_constitution = factory_root / "core" / "templates" / "CONSTITUTION.template.md"
     if source_constitution.exists():
-        shutil.copy(str(source_constitution), str(target_path / "Constitution" / "CONSTITUTION.md"))
+        # shutil.copy(str(source_constitution), str(target_path / "Constitution" / "CONSTITUTION.md"))
+        # Remplacement des placeholders lors de la copie
+        content = source_constitution.read_text(encoding="utf-8")
+        content = content.replace("[NOM_DU_PROJET]", path if not here else target_path.absolute().name)
+        content = content.replace("[DATE]", datetime.now().strftime("%Y-%m-%d"))
+        (target_path / "Constitution" / "CONSTITUTION.md").write_text(content, encoding="utf-8")
 
     # Initialisation de l'intelligence graphique (design/)
     design_path = target_path / "design"
@@ -422,10 +428,10 @@ def init(path, here):
                         shutil.copy(str(ds_file), str(design_path / "dataset" / target_name))
             else:
                 shutil.copy(str(item), str(design_path / item.name))
-        click.echo("✅ Intelligence Graphique (design/) initialisée.")
+        click.echo("[OK] Intelligence Graphique (design/) initialisee.")
     
     # Sélection interactive des IA
-    click.echo("\n🤖 Configuration des IA que vous souhaitez utiliser pour vibe-coder (Sélectionnez une ou plusieurs) :")
+    click.echo("\n[AI] Configuration des IA que vous souhaitez utiliser pour vibe-coder (Selectionnez une ou plusieurs) :")
 
     available_ais = {
         "1": ("Gemini 2.5 Flash (Rapide)", "google"),
@@ -456,17 +462,17 @@ def init(path, here):
             if ai_choice:
                 selected_providers.append(ai_choice[1])
             else:
-                click.echo(f"⚠️ Choix '{c}' invalide.")
+                click.echo(f"[WARN] Choix '{c}' invalide.")
 
         if not selected_providers:
-            click.echo("🛑 Veuillez sélectionner au moins une IA.")
+            click.echo("[STOP] Veuillez selectionner au moins une IA.")
 
 # Sélection des modèles spécifiques pour les provider OpenRouter (DeepSeek, Claude, Grok, etc.)
         openrouter_model = None
 
     if "openrouter" in selected_providers:
 
-        click.echo("\n🌐 Sélection du modèle OpenRouter :")
+        click.echo("\n[NET] Selection du modele OpenRouter :")
 
         openrouter_models = {
         "1": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
@@ -488,15 +494,15 @@ def init(path, here):
     else:
         openrouter_model = None
     
-    # Sélection interactive de la Stack
-    click.echo("\n🏗️ Configuration de la Stack Technique :")
+    # Selection interactive de la Stack
+    click.echo("\n[INIT] Configuration de la Stack Technique :")
     
-    # On impose le style Premium par défaut (Design Intelligence activé)
+    # On impose le style Premium par defaut (Design Intelligence active)
     selected_design = "premium"
-    click.echo(f"🎨 Style de Design : {selected_design} (Constitutional Architecture)")
+    click.echo(f"[DESIGN] Style de Design : {selected_design} (Constitutional Architecture)")
     
     # ============================================================
-    # 📱 SÉLECTION FRONTEND EN PREMIER (pour recommandations)
+    # [INFO] SELECTION FRONTEND EN PREMIER (pour recommandations)
     # ============================================================
     frontend_choices = {
         "1": ("react-vite", "React (Vite)"),
@@ -793,11 +799,11 @@ def setup_env(path):
     """Crée un fichier .env.example template dans le dossier spécifié."""
     target_path = Path(path)
     if not target_path.exists():
-        click.echo(f"❌ Le dossier {target_path} n'existe pas.")
+        click.echo(f"[ERROR] Le dossier {target_path} n'existe pas.")
         return
     
     setup_env_logic(target_path)
-    click.echo(f"✅ Fichier .env.example créé dans : {target_path.absolute()}")
+    click.echo(f"[OK] Fichier .env.example cree dans : {target_path.absolute()}")
 
 def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, temperature: float = 0.0):
     """Factory LLM multi-provider Speckit."""
@@ -981,7 +987,7 @@ def specify(prompt, provider, model):
                 "1": "Standard",
                 "2": "premium"
             }
-            click.echo("\n🏗️  Style de Design pour ce projet :")
+            click.echo("\n[INIT] Style de Design pour ce projet :")
             for k, v in design_choices.items(): click.echo(f" {k}) {v}")
             d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
             selected_design = design_choices[d_choice]
@@ -1002,8 +1008,8 @@ def specify(prompt, provider, model):
         # 2. Vérification de la Constitution
         const_path = Path("Constitution/CONSTITUTION.md")
         if const_path.exists() and const_path.stat().st_size > 0:
-            if not click.confirm("⚠️  Une CONSTITUTION existe déjà. Continuer écrasera vos règles actuelles. Voulez-vous continuer ?", default=False):
-                click.echo("🛑 Opération annulée. Utilisez `speckit component` pour amender la Constitution.")
+            if not click.confirm("[WARN] Une CONSTITUTION existe deja. Continuer ecrasera vos regles actuelles. Voulez-vous continuer ?", default=False):
+                click.echo("[STOP] Operation annulee. Utilisez `speckit component` pour amender la Constitution.")
                 return
 
         # 3. Synchronisation du Lock File (pour les futurs agents)
@@ -1018,15 +1024,15 @@ def specify(prompt, provider, model):
                 with open(lock_file_path, "w", encoding="utf-8") as f:
                     json.dump(lock_data, f, indent=4)
             except Exception as e:
-                click.echo(f"⚠️ Impossible de mettre à jour le lock file : {e}")
+                click.echo(f"[WARN] Impossible de mettre a jour le lock file : {e}")
 
         # 4. Génération de la Constitution
-        click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
+        click.echo(f"[AI] Analyse architecturale en cours avec l'IA ({provider_name})...")
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt, design_style=selected_design)
-        click.echo("\n✅ CONSTITUTION GÉNÉRÉE dans `Constitution/CONSTITUTION.md`.")
-        click.echo("👉 Veuillez la valider ou la modifier manuellement.")
-        click.echo("👉 Prochaine étape : `speckit vibe-design` pour extraire l'identité visuelle.")
+        click.echo("\n[OK] CONSTITUTION GENEREE dans `Constitution/CONSTITUTION.md`.")
+        click.echo("[NEXT] Veuillez la valider ou la modifier manuellement.")
+        click.echo("[NEXT] Prochaine etape : `speckit vibe-design` pour extraire l'identite visuelle.")
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
@@ -1043,49 +1049,62 @@ def component(prompt, provider, model):
     """[DOCTRINE MAINT] Amende la Constitution et ajoute une nouvelle composante (Étape)."""
     try:
         llm = get_llm(provider, model)
-        click.echo("🔍 Scan sémantique du projet en cours...")
+        click.echo("[SCAN] Scan semantique du projet en cours...")
         scanner = SemanticScanner()
         semantic_map = scanner.generate_map()
         
-        click.echo("🧠 Analyse de l'évolution architecturale...")
+        click.echo("[AI] Analyse de l'evolution architecturale...")
         const_manager = ConstitutionManager(llm)
         const_manager.amend_constitution(prompt, semantic_map)
         
-        click.echo("🗺️ Mise à jour de la feuille de route (etapes.md)...")
+        click.echo("[MAP] Mise a jour de la feuille de route (etapes.md)...")
         etape_manager = EtapeManager(llm)
         new_step = etape_manager.append_steps_from_constitution(semantic_map=semantic_map)
         
-        click.echo(f"\n✅ NOUVELLE COMPOSANTE AJOUTÉE :\n{new_step}")
-        click.echo("\n👉 Prochaine étape : `speckit run --component ID` pour l'implémenter.")
+        click.echo(f"\n[OK] NOUVELLE COMPOSANTE AJOUTEE :\n{new_step}")
+        click.echo("\n[NEXT] Prochaine etape : `speckit run --component ID` pour l'implementer.")
     except Exception as e:
         click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
 @click.argument('arg_prompt', required=False)
-@click.option('--provider', help="Provider IA spécifique")
-@click.option('--model', help="Nom du modèle spécifique")
+@click.option('--provider', help="Provider IA specifique")
+@click.option('--model', help="Nom du modele specifique")
 @click.option('--prompt', help="Description additionnelle de l'ambiance (Vibe)")
-def vibe_design(arg_prompt, provider, model, prompt):
-    """[VIBE DESIGN MAKER] Extrait l'identité visuelle (tokens, patterns) du projet."""
-    raw_prompt = arg_prompt or prompt or "Générer une identité visuelle premium et cohérente."
+@click.option('--file', '-f', type=click.Path(exists=True), help="Lire le prompt ou le JSON depuis un fichier")
+def vibe_design(arg_prompt, provider, model, prompt, file):
+    """[VIBE DESIGN MAKER] Extrait l'identite visuelle (tokens, patterns) du projet."""
+    
+    # Lecture du prompt depuis le fichier si specifie
+    if file:
+        try:
+            with open(file, "r", encoding="utf-8") as f:
+                raw_prompt = f.read()
+            click.echo(f"[FILE] Lecture du prompt depuis : {file}")
+        except Exception as e:
+            click.echo(f"[ERROR] Impossible de lire le fichier {file} : {e}")
+            return
+    else:
+        raw_prompt = arg_prompt or prompt or "Generer une identite visuelle premium et coherente."
+        
     full_prompt = f"speckit vibe-design : {raw_prompt}"
     try:
         from core.graph import AgentState
-        # Temperature=0 pour une extraction de design précise
+        # Temperature=0 pour une extraction de design precise
         llm = get_llm(provider, model, temperature=0)
-        click.echo("🎨 Vibe Design Maker : Extraction de l'identité visuelle...")
+        click.echo("[DESIGN] Vibe Design Maker : Extraction de l'identite visuelle...")
         
         # Charger la constitution
         const_path = Path("Constitution/CONSTITUTION.md")
         if not const_path.exists():
-            click.echo("❌ Erreur : La Constitution est manquante. Lancez `speckit specify` d'abord.")
+            click.echo("[ERROR] Erreur : La Constitution est manquante. Lancez `speckit specify` d'abord.")
             return
         constitution_content = const_path.read_text(encoding="utf-8")
         
         # Initialiser le manager de graphe
         graph_manager = SpecGraphManager(llm)
         
-        # État initial pour le design
+        # Etat initial pour le design
         state: AgentState = {
             "constitution_content": constitution_content,
             "user_instruction": full_prompt,
@@ -1098,26 +1117,13 @@ def vibe_design(arg_prompt, provider, model, prompt):
             "current_step": "design_extraction"
         }
         
-        # Exécuter SEULEMENT les nœuds de design pour ne pas écraser la constitution métier
-        # click.echo(" ↳ ✨ Enrichissement du brief projet...")
-        # state.update(graph_manager.project_enhancer_node(state)) # type: ignore
-        
-        # click.echo(" ↳ 🧩 Segmentation des composants UI...")
-        # state.update(graph_manager.component_improver_node(state)) # type: ignore
-        
-        click.echo(" ↳ 👁️  Détection des patterns visuels (Vibe)...")
+        click.echo(" ↳ [AI] Detection des patterns visuels (Vibe)...")
         state.update(graph_manager.pattern_vision_node(state)) # type: ignore
         
-        click.echo(" ↳ 🎨 Génération du Design System...")
+        click.echo(" ↳ [AI] Generation du Design System...")
         state.update(graph_manager.design_system_node(state)) # type: ignore
         
-        # click.echo(" ↳ 🌊 Définition des flux UX...")
-        # state.update(graph_manager.ux_flow_node(state)) # type: ignore
-        
-        # click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
-        # state.update(graph_manager.constitution_generator_node(state)) # type: ignore
-        
-        # 🛡️ PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
+        # PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
         tokens_path = Path("design/tokens.yaml")
         tokens_path.parent.mkdir(parents=True, exist_ok=True)
         import yaml
@@ -1125,36 +1131,36 @@ def vibe_design(arg_prompt, provider, model, prompt):
         if tokens:
             with open(tokens_path, "w", encoding="utf-8") as f:
                 yaml.dump(tokens, f, default_flow_style=False)
-            click.echo(f" ↳ 💾 Tokens sauvegardés dans {tokens_path}")
+            click.echo(f" ↳ [SAVE] Tokens sauvegardes dans {tokens_path}")
         
-        # 📜 Smart Update de la Constitution
+        # Smart Update de la Constitution
         if constitution_content:
             import re
             ds_style = state.get("design_system", {}).get("style", "premium")
             ds_tokens = state.get("pattern_vision", {}).get("tokens", {}).get("colors", {}).keys()
             tokens_str = ", ".join(ds_tokens) if ds_tokens else "primary, secondary, accent"
             
-            new_design_block = f"## 🎨 Design System Généré\n- Style: {ds_style}\n- Tokens clés: {tokens_str}\n"
+            new_design_block = f"## Design System Genere\n- Style: {ds_style}\n- Tokens cles: {tokens_str}\n"
             
             # Remplacement de la section Design existante
-            pattern = re.compile(r"## 🎨 Design System Généré.*?(?=\n## |$)", re.DOTALL)
+            pattern = re.compile(r"## Design System Genere.*?(?=\n## |$)", re.DOTALL)
             if pattern.search(constitution_content):
                 new_const = pattern.sub(new_design_block, constitution_content)
             else:
                 new_const = constitution_content + "\n\n" + new_design_block
                 
             const_path.write_text(new_const, encoding="utf-8")
-            click.echo(" ↳ 📜 Constitution mise à jour intelligemment (sans effacer le métier).")
+            click.echo(" ↳ [UPDATE] Constitution mise a jour intelligemment (sans effacer le metier).")
         click.echo("")
-        click.secho("✨ [VIBE DESIGN MAKER] EXTRACTION RÉUSSIE !", fg="green", bold=True)
-        click.echo(f"✅ Tokens visuels sauvegardés dans `{tokens_path}`.")
-        click.echo("✅ Constitution enrichie avec l'identité du projet.")
+        click.echo("[OK] [VIBE DESIGN MAKER] EXTRACTION REUSSIE !")
+        click.echo(f"[OK] Tokens visuels sauvegardes dans `{tokens_path}`.")
+        click.echo("[OK] Constitution enrichie avec l'identite du projet.")
         click.echo("")
-        click.secho("👉 PROCHAINE ÉTAPE :", fg="cyan", bold=True)
-        click.echo("   Exécutez `speckit plan` pour générer la feuille de route basée sur ce nouveau design.")
+        click.echo("[NEXT] PROCHAINE ETAPE :")
+        click.echo("   Executez `speckit plan` pour generer la feuille de route basee sur ce nouveau design.")
         click.echo("")
     except Exception as e:
-        click.echo(f"❌ Erreur : {e}")
+        click.echo(f"[ERROR] Erreur : {e}")
         import traceback
         traceback.print_exc()
 
@@ -1176,28 +1182,28 @@ def plan(provider, model):
                         provider_name = selected[0]
 
         provider_name = provider_name or "inconnu"
-        click.echo("🔍 Scan sémantique du projet...")
+        click.echo("[SCAN] Scan semantique du projet...")
         scanner = SemanticScanner()
         semantic_map = scanner.generate_map()
 
         etapes_path = Path("Constitution/etapes.md")
         if etapes_path.exists() and etapes_path.stat().st_size > 0:
-            if not click.confirm("⚠️  Une feuille de route (etapes.md) existe déjà. L'écraser ?", default=False):
-                click.echo("🛑 Opération annulée.")
+            if not click.confirm("[WARN] Une feuille de route (etapes.md) existe deja. L'ecraser ?", default=False):
+                click.echo("[STOP] Operation annulee.")
                 return
 
-        click.echo(f"🗺️ Génération de la feuille de route intelligente avec l'IA ({provider_name})...")
+        click.echo(f"[MAP] Generation de la feuille de route intelligente avec l'IA ({provider_name})...")
         manager = EtapeManager(llm)
         manager.generate_steps_from_constitution(semantic_map=semantic_map)
-        click.echo("✅ FEUILLE DE ROUTE GÉNÉRÉE dans `Constitution/etapes.md`.")
+        click.echo("[OK] FEUILLE DE ROUTE GENEREE dans `Constitution/etapes.md`.")
         
         # Vérification si le design est présent
         tokens_path = Path("design/tokens.yaml")
         if not tokens_path.exists():
-            click.echo("\n⚠️  Note : `design/tokens.yaml` n'a pas été trouvé.")
-            click.echo("💡 Il est recommandé de lancer `speckit vibe-design` pour une meilleure identité visuelle.")
+            click.echo("\n[WARN] Note : `design/tokens.yaml` n'a pas ete trouve.")
+            click.echo("[INFO] Il est recommande de lancer `speckit vibe-design` pour une meilleure identite visuelle.")
         
-        click.echo("👉 Prochaine étape : `speckit run --task ID` pour commencer l'implémentation.")
+        click.echo("[NEXT] Prochaine etape : `speckit run --task ID` pour commencer l'implementation.")
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
@@ -1209,14 +1215,14 @@ def plan(provider, model):
 @cli.command()
 def status():
     """Affiche l'état d'avancement du projet selon la Doctrine."""
-    click.echo("📊 STATUT SPECKIT.FACTORY :")
+    click.echo("[STATS] STATUT SPECKIT.FACTORY :")
     
     const_path = Path("Constitution/CONSTITUTION.md")
     etapes_path = Path("Constitution/etapes.md")
     lock_file = Path(".spec-lock.json")
 
-    click.echo(f" - Constitution : {'✅' if const_path.exists() and const_path.stat().st_size > 0 else '❌'}")
-    click.echo(f" - Feuille de route : {'✅' if etapes_path.exists() else '❌'}")
+    click.echo(f" - Constitution : {'[OK]' if const_path.exists() and const_path.stat().st_size > 0 else '[ERROR]'}")
+    click.echo(f" - Feuille de route : {'[OK]' if etapes_path.exists() else '[ERROR]'}")
     
     if etapes_path.exists():
         llm = get_llm()
@@ -1225,7 +1231,7 @@ def status():
         click.echo(f" - Progression : {progress['done']}/{progress['total']} tâches ({progress['progress_pct']}%)")
         next_task = manager.get_next_pending_step()
         if next_task:
-            click.echo(f" 🔜 Prochaine tâche : {next_task}")
+            click.echo(f" [NEXT] Prochaine tache : {next_task}")
 
     if lock_file.exists():
         with open(lock_file, "r") as f:
@@ -1243,19 +1249,19 @@ def run(task, component, provider, model, instruction):
     """Exécute une tâche sous verrouillage de contexte et de concurrence."""
     target_id = task or component
     if not target_id:
-        click.echo("❌ ERREUR : Vous devez spécifier --task ou --component.")
+        click.echo("[ERROR] ERREUR : Vous devez specifier --task ou --component.")
         return
 
     validator = SpecValidator()
     
     # 1. Vérification de l'intégrité globale
     if not validator.check_integrity():
-        click.echo("🛑 ARRÊT : Intégrité compromise ! Vérifiez vos fichiers core ou votre Constitution.")
+        click.echo("[STOP] ARRET : Integrite compromise ! Verifiez vos fichiers core ou votre Constitution.")
         return
 
     # 2. Verrouillage de la tâche (Multi-IA safety)
     if not validator.acquire_task_lock(target_id):
-        click.echo(f"🔒 La tâche {target_id} est déjà en cours d'exécution par une autre IA.")
+        click.echo(f"[LOCK] La tache {target_id} est deja en cours d'execution par une autre IA.")
         return
 
     try:
@@ -1272,7 +1278,7 @@ def run(task, component, provider, model, instruction):
         if not provider:
             provider = "google" # Fallback ultime
             
-        click.echo(f"🚀 Initialisation de l'IA ({provider})...")
+        click.echo(f"[RUN] Initialisation de l'IA ({provider})...")
         llm = get_llm(provider, model)
         
         # 3. Chargement du contexte
@@ -1289,7 +1295,7 @@ def run(task, component, provider, model, instruction):
         file_tree = scanner.get_file_tree() 
         
         # 4. Orchestration via le graphe
-        click.echo(f"🧠 Lancement du graphe d'orchestration pour : {target_id}")
+        click.echo(f"[AI] Lancement du graphe d'orchestration pour : {target_id}")
         graph_manager = SpecGraphManager(llm) 
         
         # Extraction du checklist de sous-tâches
@@ -1330,37 +1336,37 @@ def run(task, component, provider, model, instruction):
                 # 🛡️ CIRCUIT BREAKER : Check LLM failure threshold
                 llm_failures = final_state.get("llm_failures", 0)
                 if llm_failures >= MAX_LLM_FAILURES:
-                    click.echo(f"\n🛑 Circuit breaker activé : {llm_failures} défaillances LLM détectées.")
-                    click.echo("⛔ Arrêt immédiat du graphe.")
+                    click.echo(f"\n[STOP] Circuit breaker active : {llm_failures} defaillances LLM detectees.")
+                    click.echo("[STOP] Arret immediat du graphe.")
                     final_state["fatal_error"] = True
                     final_state["fatal_error_reason"] = f"LLM failures exceeded ({llm_failures}/{MAX_LLM_FAILURES})"
                     break
                 
                 # Check fatal error flag from nodes
                 if final_state.get("fatal_error", False):
-                    click.echo(f"\n⛔ Erreur fatale détectée : {final_state.get('fatal_error_reason', 'Raison inconnue')}")
+                    click.echo(f"\n[STOP] Erreur fatale detectee : {final_state.get('fatal_error_reason', 'Raison inconnue')}")
                     break
                 
                 for node_name, result in output.items():
                     if result is not None:  # Defensive: ensure node returns a dict
                         final_state.update(result)
                     else:
-                        logger.warning(f"⚠️ Node {node_name} returned None instead of dict")
+                        logger.warning(f"[WARN] Node {node_name} returned None instead of dict")
         except Exception as graph_error:
             # Capture errors from graph execution
             error_str = str(graph_error).upper()
-            click.echo(f"\n💥 Erreur critique pendant l'exécution du graphe : {graph_error}")
+            click.echo(f"\n[CRITICAL] Erreur critique pendant l'execution du graphe : {graph_error}")
             
             # Check if this is an LLM-related error
             if any(kw in error_str for kw in ["RESOURCE_EXHAUSTED", "QUOTA", "429", "RATE_LIMIT"]):
-                click.echo("\n⛔ RESSOURCE ÉPUISÉE - LLM API Quota dépassé")
-                click.echo("💡 Attendez quelques minutes avant de réessayer.")
+                click.echo("\n[STOP] RESSOURCE EPUISEE - LLM API Quota depasse")
+                click.echo("[INFO] Attendez quelques minutes avant de reessayer.")
                 final_state["fatal_error"] = True
                 final_state["fatal_error_reason"] = "LLM Quota exhausted (RESOURCE_EXHAUSTED)"
                 final_state["llm_failures"] = MAX_LLM_FAILURES  # Mark as critical failure
             elif any(kw in error_str for kw in ["AUTHENTICATION", "API_KEY", "401", "UNAUTHORIZED"]):
-                click.echo("\n⛔ AUTHENTIFICATION ÉCHOUÉE - Clé API invalide ou expirée")
-                click.echo(f"💡 Vérifiez votre clé API pour le provider: {provider}")
+                click.echo("\n[STOP] AUTHENTIFICATION ECHOUEE - Cle API invalide ou expirée")
+                click.echo(f"[INFO] Verifiez votre cle API pour le provider: {provider}")
                 final_state["fatal_error"] = True
                 final_state["fatal_error_reason"] = "LLM Authentication failed"
             else:
@@ -1382,7 +1388,7 @@ def run(task, component, provider, model, instruction):
         # 🛑 Check if run was aborted due to fatal error
         if fatal_error:
             click.echo("\n" + "!"*50)
-            click.echo("🛑 EXÉCUTION INTERROMPUE (ERREUR FATALE)")
+            click.echo("[STOP] EXECUTION INTERROMPUE (ERREUR FATALE)")
             click.echo("!"*50)
             click.echo(f"Raison : {final_state.get('fatal_error_reason', 'Raison inconnue')}")
             click.echo("!"*50 + "\n")
@@ -1390,7 +1396,7 @@ def run(task, component, provider, model, instruction):
         
         if audit_approved and task_complete:
             click.echo("\n" + "="*50)
-            click.echo("🛡️  RAPPORT D'AUDIT SPECKIT")
+            click.echo("[SAFE]  RAPPORT D'AUDIT SPECKIT")
             click.echo("="*50)
             click.echo(f"⭐ Score : {final_state.get('score', 'N/A')}")
             click.echo(f"✅ Points forts : {final_state.get('points_forts', 'N/A')}")

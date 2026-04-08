@@ -71,7 +71,7 @@ class SpecValidator:
         current_const_hash = self.calculate_hash(self.constitution_path)
         
         if stored_const_hash and current_const_hash != stored_const_hash:
-            logger.error("🚨 VIOLATION : La Constitution a été modifiée sans validation (Hash différent) !")
+            logger.error("[ERROR] VIOLATION : La Constitution a été modifiée sans validation (Hash différent) !")
             return False
 
         # 2. Vérification des Protocoles Core
@@ -84,7 +84,7 @@ class SpecValidator:
                 stored_hash = stored_core_hashes.get(rel_key, "")
                 
                 if stored_hash and current_hash != stored_hash:
-                    logger.error(f"🚨 VIOLATION SYSTEME : Le fichier critique '{rel_key}' a été altéré !")
+                    logger.error(f"[ERROR] VIOLATION SYSTEME : Le fichier critique '{rel_key}' a été altéré !")
                     return False
             
             
@@ -120,12 +120,12 @@ class SpecValidator:
             if task_id in active_tasks:
                 # Vérifier si expiré
                 if time.time() - active_tasks[task_id] < 1800:
-                    logger.warning(f"🔒 Tâche {task_id} déjà en cours d'exécution.")
+                    logger.warning(f"[LOCK] Tâche {task_id} déjà en cours d'exécution.")
                     return False
             
             active_tasks[task_id] = time.time()
             self._save_lock_data(data)
-            logger.info(f"🔒 Tâche {task_id} verrouillée pour exécution.")
+            logger.info(f"[LOCK] Tâche {task_id} verrouillée pour exécution.")
             return True
         except Exception as e:
             logger.error(f"Erreur lors du verrouillage de la tâche : {e}")
@@ -144,7 +144,7 @@ class SpecValidator:
             if task_id in active_tasks:
                 del active_tasks[task_id]
                 self._save_lock_data(data)
-                logger.info(f"🔓 Tâche {task_id} déverrouillée.")
+                logger.info(f"[OK] Tâche {task_id} déverrouillée.")
         except Exception as e:
             logger.error(f"Erreur lors du déverrouillage de la tâche : {e}")
 
@@ -190,6 +190,6 @@ class SpecValidator:
         try:
             with open(self.lock_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
-            logger.info("🔒 Système verrouillé : Constitution et Protocoles enregistrés.")
+            logger.info("[LOCK] Système verrouillé : Constitution et Protocoles enregistrés.")
         except Exception as e:
-            logger.error(f"❌ Impossible de verrouiller .spec-lock.json : {e}")
+            logger.error(f"[ERROR] Impossible de verrouiller .spec-lock.json : {e}")
