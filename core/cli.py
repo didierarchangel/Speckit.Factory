@@ -419,6 +419,7 @@ def init(path, here):
     # Création des fichiers de base
     (target_path / "Constitution" / "CONSTITUTION.md").touch()
     (target_path / "Constitution" / "etapes.md").touch()
+    (target_path / "Constitution" / "MappingComponent.md").touch()
 
     # Injection de la CONSTITUTION par défaut
     factory_root = Path(__file__).parent.parent
@@ -430,6 +431,12 @@ def init(path, here):
         content = content.replace("[NOM_DU_PROJET]", path if not here else target_path.absolute().name)
         content = content.replace("[DATE]", datetime.now().strftime("%Y-%m-%d"))
         (target_path / "Constitution" / "CONSTITUTION.md").write_text(content, encoding="utf-8")
+
+    source_mapping_component = factory_root / "core" / "templates" / "MAPPING_COMPONENT.template.md"
+    if source_mapping_component.exists():
+        mapping_content = source_mapping_component.read_text(encoding="utf-8")
+        mapping_content = mapping_content.replace("[DATE]", datetime.now().strftime("%Y-%m-%d"))
+        (target_path / "Constitution" / "MappingComponent.md").write_text(mapping_content, encoding="utf-8")
 
     # Initialisation de l'intelligence graphique (design/)
     design_path = target_path / "design"
@@ -976,7 +983,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, te
 @click.option('--provider', help="Provider IA spécifique")
 @click.option('--model', help="Nom du modèle spécifique")
 def specify(prompt, provider, model):
-    """[DOCTRINE 2] Analyse une demande et produit la CONSTITUTION.md."""
+    """[DOCTRINE 2] Analyse une demande et produit CONSTITUTION.md + MappingComponent.md."""
     try:
         llm = get_llm(provider, model)
         # Résolution du nom du provider pour l'affichage
@@ -991,18 +998,22 @@ def specify(prompt, provider, model):
                         provider_name = selected[0]
 
         # 1. Résolution du Design Style (Priorité : Lockfile > Prompt interactif)
-        selected_design = None
+        selected_design: str = "premium"
+        design_from_lock = False
         lock_file_path = Path(".spec-lock.json")
         
         if lock_file_path.exists():
             try:
                 with open(lock_file_path, "r", encoding="utf-8") as f:
                     lock_data = json.load(f)
-                    selected_design = lock_data.get("stack_preferences", {}).get("design")
+                    lock_design = lock_data.get("stack_preferences", {}).get("design")
+                    if isinstance(lock_design, str) and lock_design.strip():
+                        selected_design = lock_design
+                        design_from_lock = True
             except:
                 pass
 
-        if not selected_design:
+        if not design_from_lock:
             design_choices = {
                 "1": "Standard",
                 "2": "premium"
@@ -1050,7 +1061,13 @@ def specify(prompt, provider, model):
         click.echo(f"[AI] Analyse architecturale en cours avec l'IA ({provider_name})...")
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt, design_style=selected_design)
+        mapping_path = Path("Constitution/MappingComponent.md")
+        mapping_content = mapping_path.read_text(encoding="utf-8") if mapping_path.exists() else ""
         click.echo("\n[OK] CONSTITUTION GENEREE dans `Constitution/CONSTITUTION.md`.")
+        click.echo("[OK] VISION APPLICATION GENEREE dans `Constitution/MappingComponent.md`.")
+        if "mode fallback local" in mapping_content:
+            click.echo("[WARN] MappingComponent genere en mode fallback (sortie dual-doc invalide ou indisponible).")
+            click.echo("[INFO] Relancez `speckit specify` plus tard pour enrichir automatiquement le mapping.")
         click.echo("[NEXT] Veuillez la valider ou la modifier manuellement.")
         click.echo("[NEXT] Prochaine etape : `speckit vibe-design` pour extraire l'identite visuelle.")
     except Exception as e:
@@ -1423,11 +1440,9 @@ def run(task, component, provider, model, instruction):
                 final_state["llm_failures"] = final_state.get("llm_failures", 0) + 1
         
         # 5. Ground Truth : vérification réelle sur disque avant validation finale
-        gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")  # type: ignore
-        if isinstance(gt_result, tuple):
-            _, checked_count, total_count = gt_result  # type: ignore
-        else:
-            checked_count, total_count = 0, 0
+        _, checked_count, total_count = manager_etapes.mark_step_as_completed(
+            target_id, synthesis="", project_root="."
+        )
         
         task_complete = (checked_count == total_count) if total_count > 0 else True
         audit_approved = final_state.get("validation_status") == "APPROUVÉ"

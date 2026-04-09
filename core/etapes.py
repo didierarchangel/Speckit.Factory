@@ -7,6 +7,8 @@
 
 import re
 import logging
+import json
+import unicodedata
 from pathlib import Path
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -53,8 +55,574 @@ class EtapeManager:
         self.model = model
         self.root = Path(project_root)
         self.constitution_path = self.root / "Constitution" / "CONSTITUTION.md"
+        self.mapping_component_path = self.root / "Constitution" / "MappingComponent.md"
         self.etapes_path = self.root / "Constitution" / "etapes.md"
         self.history_path = self.root / "Constitution" / "EtapesAdd.md"
+        self.image_meta_path = self.root / "design" / "image_meta.json"
+        self.constitution_design_path = self.root / "design" / "constitution_design.yaml"
+
+    def _load_design_inputs(self, constitution_content: str = "") -> dict:
+        """Charge les sources de verite design et construit un blueprint de mapping."""
+        image_meta_raw = ""
+        constitution_design_raw = ""
+        mapping_component_raw = ""
+        detected_components_from_image: list[str] = []
+        image_meta_payload: dict = {}
+
+        if self.image_meta_path.exists():
+            image_meta_raw = self.image_meta_path.read_text(encoding="utf-8")
+            try:
+                payload = json.loads(image_meta_raw)
+                if isinstance(payload, dict):
+                    image_meta_payload = payload
+                raw_components = payload.get("detected_components", [])
+                if isinstance(raw_components, list):
+                    detected_components_from_image = [
+                        str(component).strip()
+                        for component in raw_components
+                        if str(component).strip()
+                    ]
+            except Exception as e:
+                logger.warning(
+                    "Impossible de parser design/image_meta.json pour detected_components: %s",
+                    e,
+                )
+
+        if self.constitution_design_path.exists():
+            constitution_design_raw = self.constitution_design_path.read_text(encoding="utf-8")
+
+        if self.mapping_component_path.exists():
+            mapping_component_raw = self.mapping_component_path.read_text(encoding="utf-8")
+
+        mapping_hints = self._extract_mapping_hints(mapping_component_raw)
+        constitution_modules = self._extract_domain_modules_from_constitution(constitution_content)
+        mapping_modules = mapping_hints.get("modules", [])
+        domain_modules = list(dict.fromkeys(constitution_modules + mapping_modules))
+
+        mapping_components = list((mapping_hints.get("placements") or {}).keys())
+        detected_components = list(dict.fromkeys(detected_components_from_image + mapping_components))
+
+        layout_blueprint = self._build_layout_blueprint(
+            image_meta_payload=image_meta_payload,
+            detected_components=detected_components,
+            domain_modules=domain_modules,
+            mapping_hints=mapping_hints,
+        )
+        layout_blueprint_text = self._format_layout_blueprint(layout_blueprint)
+
+        return {
+            "image_meta_raw": image_meta_raw or "(Fichier design/image_meta.json introuvable)",
+            "constitution_design_raw": constitution_design_raw or "(Fichier design/constitution_design.yaml introuvable)",
+            "mapping_component_raw": mapping_component_raw or "(Fichier Constitution/MappingComponent.md introuvable)",
+            "detected_components": detected_components,
+            "domain_modules": domain_modules,
+            "constitution_modules": constitution_modules,
+            "mapping_modules": mapping_modules,
+            "mapping_hints": mapping_hints,
+            "layout_blueprint": layout_blueprint,
+            "layout_blueprint_text": layout_blueprint_text,
+        }
+
+    def _normalize_component_name(self, value: str) -> str:
+        """Normalise un nom de composant pour comparaison robuste."""
+        return re.sub(r"[^a-z0-9]", "", value.lower())
+
+    def _component_filename(self, component: str) -> str:
+        """Construit un nom de fichier composant stable à partir du nom détecté."""
+        cleaned = re.sub(r"[^a-zA-Z0-9_-]", "_", component.strip())
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+        return cleaned or "component"
+
+    def _strip_accents(self, value: str) -> str:
+        """Retire les accents pour simplifier le parsing heuristique."""
+        return "".join(
+            ch for ch in unicodedata.normalize("NFKD", value)
+            if not unicodedata.combining(ch)
+        )
+
+    def _normalize_domain_module_candidate(self, candidate: str) -> str | None:
+        """Normalise un candidat module pour extraire un nom metier propre."""
+        if not candidate:
+            return None
+
+        text = self._strip_accents(candidate.lower())
+        text = text.replace("’", "'")
+        text = re.sub(r"\(.*?\)", " ", text)
+        if ":" in text:
+            text = text.split(":", 1)[0]
+        text = re.sub(r"[_/\\-]+", " ", text)
+        text = re.sub(r"[^a-z0-9\s]", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return None
+
+        joined = text
+        # Canonicalisation domaine HMS (et fallback generic)
+        if "patient" in joined:
+            return "patients"
+        if "consult" in joined:
+            return "consultations"
+        if "prescri" in joined:
+            return "prescriptions"
+        if "factur" in joined or "bill" in joined:
+            return "billing"
+        if "alert" in joined:
+            return "alerts"
+        if "rendez" in joined or "appointment" in joined:
+            return "appointments"
+
+        stopwords = {
+            "gestion", "module", "modules", "metier", "metiers", "business", "domain", "domaine",
+            "feature", "features", "fonctionnalite", "fonctionnalites", "section", "sections",
+            "de", "des", "du", "la", "le", "les", "et", "ou", "pour", "avec", "sur", "par",
+            "app", "application", "dashboard", "layout",
+        }
+        technical = {
+            "esm", "esnext", "typescript", "target", "es2022", "node", "nodejs", "react", "vite",
+            "tailwind", "jwt", "mongodb", "mongoose", "zod", "cors", "dotenv", "openai",
+            "graphicdesign", "tsc", "noemit", "frontend", "backend", "api", "rest",
+            "auth", "login", "register", "protectedroute", "config", "configuration",
+        }
+
+        words = [w for w in text.split() if w]
+        filtered = [
+            w for w in words
+            if w not in stopwords and w not in technical and not re.fullmatch(r"module\d+", w)
+        ]
+        if not filtered:
+            return None
+
+        token = filtered[-1]
+        if len(token) < 3:
+            return None
+        if token in technical:
+            return None
+        if any(char.isdigit() for char in token):
+            return None
+        return token
+
+    def _extract_domain_modules_from_constitution(self, constitution_content: str) -> list[str]:
+        """Extrait une liste de modules metier depuis la CONSTITUTION."""
+        if not constitution_content:
+            return []
+
+        modules: list[str] = []
+        seen: set[str] = set()
+        in_modules_block = False
+
+        for raw_line in constitution_content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                in_modules_block = False
+                continue
+
+            if line.startswith("#"):
+                header = self._strip_accents(line.lower())
+                has_module_marker = any(
+                    marker in header for marker in ("module", "entit", "feature", "fonctionnalit", "domain", "domaine")
+                )
+                has_business_marker = any(
+                    marker in header for marker in ("metier", "business", "domain", "domaine", "feature", "fonction")
+                )
+                in_modules_block = has_module_marker and has_business_marker
+                continue
+
+            parse_line = in_modules_block and (
+                line.startswith(("-", "*")) or "`" in line or ":" in line or re.match(r"^\d+\.", line)
+            )
+            if not parse_line:
+                continue
+
+            candidates = re.findall(r"`([^`]+)`", line)
+            if not candidates:
+                probe = re.sub(r"^[-*\d\.\)\s]+", "", line)
+                candidates = re.split(r"[,;/|]", probe)
+
+            for candidate in candidates:
+                token = self._normalize_domain_module_candidate(candidate)
+                if not token:
+                    continue
+                if token in seen:
+                    continue
+                seen.add(token)
+                modules.append(token)
+
+        return modules[:12]
+
+    def _extract_mapping_hints(self, mapping_content: str) -> dict:
+        """Extrait modules/sections/layout/placements depuis MappingComponent.md."""
+        hints = {
+            "layout": "",
+            "sections": [],
+            "modules": [],
+            "placements": {},
+        }
+        if not mapping_content:
+            return hints
+
+        modules: list[str] = []
+        sections: list[str] = []
+        placements: dict[str, str] = {}
+        in_modules = False
+        in_mapping = False
+        in_layout = False
+
+        for raw_line in mapping_content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            if line.startswith("## "):
+                low_h = self._strip_accents(line.lower())
+                in_modules = ("module" in low_h) and any(
+                    marker in low_h for marker in ("metier", "business", "domain", "domaine", "feature")
+                )
+                in_mapping = ("mapping" in low_h and "composant" in low_h) or ("mapping" in low_h and "component" in low_h)
+                in_layout = "layout" in low_h
+                continue
+
+            m_layout = re.search(r"\blayout\s*:\s*(.+)$", line, flags=re.IGNORECASE)
+            if m_layout:
+                layout_raw = self._strip_accents(m_layout.group(1).strip().lower())
+                if "dashboard" in layout_raw:
+                    hints["layout"] = "dashboard"
+                elif "shell" in layout_raw:
+                    hints["layout"] = "dashboard"
+                elif layout_raw:
+                    hints["layout"] = re.sub(r"[^a-z0-9_-]", "", layout_raw.split()[0])
+
+            m_sections = re.search(r"\bsections_order\s*:\s*(.+)$", line, flags=re.IGNORECASE)
+            if m_sections:
+                raw_sections = m_sections.group(1).strip()
+                parts = [seg.strip().strip("`") for seg in re.split(r"\s*->\s*", raw_sections) if seg.strip()]
+                sections.extend(parts)
+            elif in_layout and re.match(r"^[-*\d]", line):
+                section_hint = self._strip_accents(line.lower())
+                if "topbar" in section_hint or "header" in section_hint:
+                    sections.append("hero")
+                elif "sidebar" in section_hint:
+                    sections.append("stats")
+                elif "dashboard" in section_hint:
+                    sections.append("dashboard_widgets")
+                elif "table" in section_hint:
+                    sections.append("tables")
+                elif "form" in section_hint:
+                    sections.append("forms")
+
+            if in_modules and line.startswith(("-", "*")):
+                backtick_items = re.findall(r"`([^`]+)`", line)
+                if backtick_items:
+                    candidates = backtick_items
+                else:
+                    probe = line[1:].strip()
+                    candidates = [probe]
+                for item in candidates:
+                    token = self._normalize_domain_module_candidate(item)
+                    if token and token not in modules:
+                        modules.append(token)
+
+            mapping_candidate = False
+            if in_mapping and line.startswith(("-", "*")):
+                mapping_candidate = True
+            elif line.startswith(("-", "*")) and ("=>" in line or "->" in line):
+                mapping_candidate = True
+
+            if mapping_candidate:
+                separator = r"(?:=>|->|:)" if in_mapping else r"(?:=>|->)"
+                m_place = re.search(
+                    rf"[-*]\s*`?([a-zA-Z0-9_.-]+)`?\s*{separator}\s*`?([a-zA-Z0-9_.-]+)`?",
+                    line,
+                )
+                if m_place:
+                    component = m_place.group(1).strip()
+                    zone = m_place.group(2).strip()
+                    if component and zone:
+                        placements[component] = zone
+
+        hints["sections"] = list(dict.fromkeys(sections))
+        hints["modules"] = modules[:16]
+        hints["placements"] = placements
+        return hints
+
+    # Mapping des composants détectés à des zones de layout typiques pour construire un blueprint de montage logique
+    def _build_layout_blueprint(
+        self,
+        image_meta_payload: dict,
+        detected_components: list[str],
+        domain_modules: list[str],
+        mapping_hints: dict | None = None,
+    ) -> dict:
+        """Construit un blueprint de montage logique (zones + ordre des sections)."""
+        structure = image_meta_payload.get("STRUCTURE", {}) if isinstance(image_meta_payload, dict) else {}
+        hints = mapping_hints or {}
+
+        mapped_sections = hints.get("sections", []) if isinstance(hints, dict) else []
+        raw_sections = mapped_sections or (structure.get("sections", []) if isinstance(structure, dict) else [])
+        sections = (
+            [str(section).strip() for section in raw_sections if str(section).strip()]
+            if isinstance(raw_sections, list)
+            else []
+        )
+        if not sections:
+            sections = ["hero", "stats", "dashboard_widgets", "tables", "forms"]
+        else:
+            baseline_sections = ["hero", "stats", "dashboard_widgets", "tables", "forms"]
+            present = {self._normalize_component_name(section) for section in sections}
+            for section in baseline_sections:
+                if self._normalize_component_name(section) not in present:
+                    sections.append(section)
+                    present.add(self._normalize_component_name(section))
+
+        module_sections = [f"module_{self._component_filename(module_name)}" for module_name in domain_modules]
+        sections_norm = [self._normalize_component_name(section) for section in sections]
+        insert_at = 2 if len(sections) >= 2 else len(sections)
+        for module_section in module_sections:
+            module_norm = self._normalize_component_name(module_section)
+            if module_norm in sections_norm:
+                continue
+            sections.insert(insert_at, module_section)
+            sections_norm.insert(insert_at, module_norm)
+            insert_at += 1
+
+        placements = {}
+        for component in detected_components:
+            key = self._normalize_component_name(component)
+            module_zone = None
+            for module_name in domain_modules:
+                module_norm = self._normalize_component_name(module_name)
+                if module_norm and module_norm in key:
+                    module_zone = f"main.modules.{self._component_filename(module_name)}"
+                    break
+
+            if module_zone:
+                zone = module_zone
+            elif key == "header":
+                zone = "shell.topbar"
+            elif key == "sidebar":
+                zone = "shell.sidebar"
+            elif key in {"featurecard", "card"}:
+                zone = "main.hero"
+            elif key == "statsblock":
+                zone = "main.stats"
+            elif key == "dashboardwidget":
+                zone = "main.dashboard_widgets"
+            elif key == "table":
+                zone = "main.tables"
+            elif key in {"forminput", "button"}:
+                zone = "main.forms"
+            elif key == "notification":
+                zone = "shell.topbar.actions"
+            elif key == "badge":
+                zone = "main.cards.badges"
+            elif key == "modal":
+                zone = "overlay.global"
+            else:
+                zone = "main.shared"
+            placements[component] = zone
+
+        mapped_placements = hints.get("placements", {}) if isinstance(hints, dict) else {}
+        if isinstance(mapped_placements, dict):
+            for component, zone in mapped_placements.items():
+                c = str(component).strip()
+                z = str(zone).strip()
+                if c and z:
+                    placements[c] = z
+
+        return {
+            "layout": str(
+                hints.get("layout")
+                or (structure.get("layout", "dashboard") if isinstance(structure, dict) else "dashboard")
+            ),
+            "source_priority": [#Priorité des sources de vérité pour le mapping layout
+                "Constitution/CONSTITUTION.md",
+                "Constitution/MappingComponent.md",
+                "design/constitution_design.yaml",
+                "design/image_meta.json",
+            ],
+            "domain_modules": domain_modules,
+            "modules_from_mapping": hints.get("modules", []) if isinstance(hints, dict) else [],
+            "sections": sections,
+            "placements": placements,
+        }
+
+    def _format_layout_blueprint(self, layout_blueprint: dict) -> str:
+        """Formate le blueprint de layout pour injection dans le prompt."""
+        sections = layout_blueprint.get("sections", [])
+        source_priority = layout_blueprint.get("source_priority", [])
+        domain_modules = layout_blueprint.get("domain_modules", [])
+        modules_from_mapping = layout_blueprint.get("modules_from_mapping", [])
+        sections_order = " -> ".join(str(s) for s in sections) if sections else "(non defini)"
+        source_chain = " -> ".join(str(s) for s in source_priority) if source_priority else "(non defini)"
+        modules_chain = ", ".join(f"`{module}`" for module in domain_modules) if domain_modules else "(non detectes)"
+        mapping_modules_chain = ", ".join(f"`{module}`" for module in modules_from_mapping) if modules_from_mapping else "(non detectes)"
+        lines = [
+            f"source_priority: {source_chain}",
+            f"layout: {layout_blueprint.get('layout', 'dashboard')}",
+            f"resolved_domain_modules: {modules_chain}",
+            f"domain_modules_from_mapping_component: {mapping_modules_chain}",
+            f"sections_order: {sections_order}",
+            "component_placements:",
+        ]
+        placements = layout_blueprint.get("placements", {})
+        if placements:
+            for component, zone in placements.items():
+                lines.append(f"- {component}: {zone}")
+        else:
+            lines.append("- (aucun composant detecte)")
+        return "\n".join(lines)
+
+    def _find_step_ranges_by_suffix(self, lines: list[str], suffixes: list[str]) -> list[tuple[int, int, str]]:
+        """Retourne les plages (start, end, step_id) des étapes correspondant à un suffixe d'ID."""
+        headers: list[tuple[int, str]] = []
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("## "):
+                continue
+            match = re.match(r"^## \[[x ]\]\s+([A-Za-z0-9_]+)", stripped)
+            if not match:
+                continue
+            step_id = match.group(1)
+            if any(step_id.endswith(suffix) for suffix in suffixes):
+                headers.append((idx, step_id))
+
+        ranges: list[tuple[int, int, str]] = []
+        for header_idx, step_id in headers:
+            end_idx = len(lines)
+            for j in range(header_idx + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    end_idx = j
+                    break
+            ranges.append((header_idx, end_idx, step_id))
+        return ranges
+
+    def _enforce_frontend_components_step(
+        self,
+        markdown_steps: str,
+        detected_components: list[str],
+        layout_blueprint: dict | None = None,
+    ) -> str:
+        """Garantit que l'étape *_Frontend_Components couvre creation ET montage logique."""
+        if not markdown_steps:
+            return markdown_steps
+
+        lines = markdown_steps.splitlines()
+        step_ranges = self._find_step_ranges_by_suffix(lines, ["Frontend_Components"])
+        if not step_ranges:
+            return markdown_steps
+
+        blueprint = layout_blueprint or {}
+        sections = blueprint.get("sections", []) if isinstance(blueprint, dict) else []
+        placements = blueprint.get("placements", {}) if isinstance(blueprint, dict) else {}
+        domain_modules = blueprint.get("domain_modules", []) if isinstance(blueprint, dict) else []
+
+        # Traiter de bas en haut pour stabiliser les index en cas d'insertion
+        for start_index, end_index, _step_id in sorted(step_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_raw = "\n".join(existing_subtasks).lower()
+            existing_text_raw_norm = self._strip_accents(existing_text_raw)
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+
+            additions = []
+            if "valider le mapping des composants avec `constitution/constitution.md`" not in existing_text_raw_norm:
+                additions.append(
+                    "- [ ] Valider le mapping des composants avec `Constitution/CONSTITUTION.md` (regles/stack) en source primaire, puis `Constitution/MappingComponent.md` (vision app), puis `design/constitution_design.yaml` et `design/image_meta.json`"
+                )
+
+            if "assembler `frontend/src/layouts/applayout.tsx`" not in existing_text_raw_norm:
+                additions.append(
+                    "- [ ] Assembler `frontend/src/layouts/AppLayout.tsx` avec topbar, sidebar et zone main responsive (desktop/mobile)"
+                )
+
+            if sections and "orchestrer `frontend/src/pages/dashboard.tsx` avec l'ordre des sections" not in existing_text_raw_norm:
+                sections_chain = " -> ".join(f"`{section}`" for section in sections)
+                additions.append(
+                    f"- [ ] Orchestrer `frontend/src/pages/Dashboard.tsx` avec l'ordre des sections {sections_chain}"
+                )
+
+            if domain_modules:
+                modules_chain = ", ".join(f"`{module}`" for module in domain_modules)
+                if "aligner les sections metier de `dashboard` sur les modules de `constitution/constitution.md`" not in existing_text_raw_norm:
+                    additions.append(
+                        f"- [ ] Aligner les sections metier de `Dashboard` sur les modules de `Constitution/CONSTITUTION.md` + `Constitution/MappingComponent.md`: {modules_chain}"
+                    )
+                for module_name in domain_modules:
+                    section_name = f"module_{self._component_filename(module_name)}"
+                    module_signature = self._normalize_component_name(f"{section_name}dashboardconstitution")
+                    if module_signature not in existing_text_norm:
+                        additions.append(
+                            f"- [ ] Ajouter la section `{section_name}` dans `frontend/src/pages/Dashboard.tsx` pour le module metier `{module_name}`"
+                        )
+
+            for component in detected_components:
+                normalized = self._normalize_component_name(component)
+                if not normalized:
+                    continue
+
+                component_file = f"frontend/src/components/{self._component_filename(component)}.tsx"
+                if normalized not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Creer `{component_file}` pour le composant {component} selon `Constitution/MappingComponent.md` et le design system (`design/constitution_design.yaml` + `design/image_meta.json`)"
+                    )
+
+                zone = str(placements.get(component, "main.shared"))
+                placement_signature = self._normalize_component_name(f"{component}{zone}dashboard")
+                if placement_signature not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Integrer `{component_file}` dans la zone {zone} via `frontend/src/pages/Dashboard.tsx` pour un layout logique"
+                    )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        return "\n".join(lines)
+
+    def _enforce_backend_components_relation(
+        self,
+        markdown_steps: str,
+        domain_modules: list[str],
+    ) -> str:
+        """Garantit le lien explicite routes/controllers <-> composants front."""
+        if not markdown_steps:
+            return markdown_steps
+
+        lines = markdown_steps.splitlines()
+        step_ranges = self._find_step_ranges_by_suffix(lines, ["Backend_API_Modules", "API_Modules"])
+        if not step_ranges:
+            return markdown_steps
+
+        for start_index, end_index, _step_id in sorted(step_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_raw = "\n".join(existing_subtasks).lower()
+            existing_text_raw_norm = self._strip_accents(existing_text_raw)
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+
+            additions = []
+            if "relier les routes/controllers backend aux composants frontend de l'etape *_frontend_components" not in existing_text_raw_norm:
+                additions.append(
+                    "- [ ] Relier les routes/controllers backend aux composants frontend de l'etape `*_Frontend_Components` (contrat endpoint <-> UI)"
+                )
+
+            for module_name in domain_modules:
+                module_slug = self._component_filename(module_name)
+                module_signature = self._normalize_component_name(f"backend{module_slug}routecontrollerfrontend")
+                if module_signature in existing_text_norm:
+                    continue
+                additions.append(
+                    f"- [ ] Mapper le module `{module_name}` : `backend/src/routes/{module_slug}.routes.ts` + `backend/src/controllers/{module_slug}.controller.ts` avec la section frontend `module_{module_slug}`"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        return "\n".join(lines)
 
     def generate_steps_from_constitution(self, semantic_map: str = "") -> str:
         """Analyse la Constitution pour définir les étapes du projet avec des sous-tâches détaillées."""
@@ -67,6 +635,14 @@ class EtapeManager:
         existing_plan = ""
         if self.etapes_path.exists():
             existing_plan = self.etapes_path.read_text(encoding="utf-8")
+        design_inputs = self._load_design_inputs(constitution_content=constitution_content)
+        detected_components = design_inputs["detected_components"]
+        domain_modules = design_inputs["domain_modules"]
+        mapping_modules = design_inputs["mapping_modules"]
+        layout_blueprint = design_inputs["layout_blueprint"]
+        detected_components_text = ", ".join(detected_components) if detected_components else "(aucun composant detecte)"
+        domain_modules_text = ", ".join(domain_modules) if domain_modules else "(aucun module detecte)"
+        mapping_modules_text = ", ".join(mapping_modules) if mapping_modules else "(aucun module detecte)"
 
         system_prompt = """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie, l'état actuel du code (SEMANTIC MAP) et le PLAN EXISTANT,
             découpe le projet en étapes techniques majeures (ex: 01, 02, 03).
@@ -79,6 +655,10 @@ class EtapeManager:
             5. **INTERDICTION D'HALLUCINATION** : Si un fichier (ex: `package.json`, `.eslintrc.js`, `app.ts`) n'est PAS listé dans la SEMANTIC MAP, la tâche qui le concerne DOIT rester en [ ]. Ne suppose jamais qu'un standard est présent.
             6. Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
             7. Découper le reste en étapes atomiques avec des sous-tâches actionnables (src/, routes/, models/).
+            8. Utiliser un ordre de verite STRICT pour le mapping layout : `Constitution/CONSTITUTION.md` (source primaire, regles/stack) -> `Constitution/MappingComponent.md` (vision app) -> `design/constitution_design.yaml` -> `design/image_meta.json`.
+            9. Pour l'étape `*_Frontend_Components` (ID dynamique, numéro non imposé), générer des sous-tâches orientées composants à partir de DESIGN_INPUTS.detected_components (au moins une sous-tâche par composant détecté, si disponible).
+            10. Pour l'étape `*_Frontend_Components` (ID dynamique), ajouter le montage logique (component placement) en t'appuyant sur DESIGN_INPUTS.layout_blueprint (shell + ordre des sections + composant -> zone + modules metier Constitution + vision MappingComponent).
+            11. Les étapes backend `*_Backend_API_Modules` / `*_API_Modules` doivent explicitement relier routes/controllers aux composants/pages de l'étape `*_Frontend_Components`.
             
             OBLIGATION DE STRUCTURE :
             Afin de standardiser la qualité des pipelines, tu DOIS inclure (ou adapter) la structure d'étapes suivante pour garantir une architecture de type Web moderne (API + Frontend) complète :
@@ -91,11 +671,11 @@ class EtapeManager:
             - 09_Initialisation_Serveur_Backend (inclure cors() et express.json())
             - 10_Modelisation_Donnees_MongoDB (Modèles des entités et relations)
             - 11_Backend_Auth_JWT (Routes login/register, middlewares)
-            - 12_Backend_API_Modules (Routes et controllers métier)
+            - [ID dynamique]_Backend_API_Modules (Routes et controllers métier liés aux composants/pages frontend)
             - 13_Tests_Backend_API (Tests CRUD/Auth avec Jest et Supertest)
             - 14_Architecture_Frontend (React Router, Zustand, Axios instance)
             - 15_API_LAYER (Connexion Backend via axios)
-            - NOUVELLEMENT INTÉGRÉ -> Composants Frontend : Auth (Login/Register/ProtectedRoute), Entités métier (Listes, Forms, Détails), Dashboard
+            - [ID dynamique]_Frontend_Components (sous-tâches détaillées dérivées de DESIGN_INPUTS.detected_components + Auth + Entités métier + Dashboard)
             - 22_Integration_API (Connecter modules Frontend à API)
             - 23_Tests_Frontend (Tests unitaires / intégration Vue/React via Vitest)
             - 24_Test_CORS_Backend & 25_Test_CORS_Frontend (Vérifier cookies JWT/Headers et CORS)
@@ -105,7 +685,16 @@ class EtapeManager:
             - 29_Documentation (README backend/frontend, Swagger)
             - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
             - 30_Deploiement (Backend, Frontend, MongoDB Atlas)
-            - IMPORTANT : Tu DOIS TOUJOURS inclure l'étape `## [ ] 00_Vibe_Design_Extraction` au tout début si elle n'est pas déjà marquée [x]. Elle doit contenir la sous-tâche `- [ ] Extraire les tokens uniques (couleurs Hex, radius, shadows) dans `design/tokens.yaml` via le Vibe Design Maker`.
+            - IMPORTANT : Tu DOIS TOUJOURS inclure l'étape `## [ ] 00_Vibe_Design_Extraction` au tout début si elle n'est pas déjà marquée [x].
+              Elle doit contenir ces sous-tâches :
+              - [ ] Analyser `Constitution/MappingComponent.md` (vision app, layout cible, mapping composant->zone)
+              - [ ] Analyser `design/image_meta.json` (palette, effets, composants detectes, identite visuelle) pour recuperer les signaux de style du design source
+              - [ ] Analyser `design/constitution_design.yaml` (principes, layout, couleurs, typo, composants) comme base de system design
+              - [ ] Fusionner les informations des sources (CONSTITUTION, MappingComponent, design) et extraire les tokens uniques (couleurs Hex/Tailwind, radius, shadows, spacing, typo) dans `design/tokens.yaml` via le Vibe Design Maker
+              - [ ] En cas de conflit, prioriser `Constitution/CONSTITUTION.md` (regles/stack), puis `Constitution/MappingComponent.md` (vision app/layout), puis `design/constitution_design.yaml` (structure design system), puis `design/image_meta.json` (reference visuelle)
+            - IMPORTANT : L'étape `## [ ] *_Frontend_Components` (ID dynamique) ne doit pas être sommaire. Elle doit lister les composants détectés dans DESIGN_INPUTS.detected_components (une sous-tâche claire par composant détecté), en plus des composants Auth/entités/dashboard.
+            - IMPORTANT : L'étape `## [ ] *_Frontend_Components` (ID dynamique) doit inclure le montage explicite de chaque composant dans un layout logique (ex: topbar, sidebar, hero, stats, tables, forms) avec référence au shell `AppLayout`, à `Dashboard`, et aux modules metier de la Constitution.
+            - IMPORTANT : L'étape `## [ ] *_Backend_API_Modules` (ou `*_API_Modules`) doit inclure des sous-tâches de mapping backend->frontend (routes/controllers alignés avec les composants/pages de `*_Frontend_Components`).
 
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
@@ -116,7 +705,21 @@ class EtapeManager:
             
             IMPORTANT : Les IDs d'étape (01_nom_etape) doivent être courts, sans espaces, et utiliser des underscores."""
 
-        user_message = f"CONSTITUTION :\n{constitution_content}\n\nSEMANTIC MAP (État du code actuel) :\n{semantic_map}\n\nPLAN EXISTANT (etapes.md actuel) :\n{existing_plan}"
+        user_message = (
+            f"CONSTITUTION :\n{constitution_content}\n\n"
+            f"SEMANTIC MAP (État du code actuel) :\n{semantic_map}\n\n"
+            f"PLAN EXISTANT (etapes.md actuel) :\n{existing_plan}\n\n"
+            f"DESIGN INPUTS :\n"
+            f"- source_primary: Constitution/CONSTITUTION.md (bloc CONSTITUTION ci-dessus)\n"
+            f"- source_secondary: Constitution/MappingComponent.md\n"
+            f"- domain_modules_from_constitution: {domain_modules_text}\n\n"
+            f"- domain_modules_from_mapping_component: {mapping_modules_text}\n\n"
+            f"- detected_components (depuis design/image_meta.json): {detected_components_text}\n\n"
+            f"- layout_blueprint (derive de CONSTITUTION + MappingComponent + design):\n{design_inputs['layout_blueprint_text']}\n\n"
+            f"- Constitution/MappingComponent.md :\n{design_inputs['mapping_component_raw']}\n\n"
+            f"- design/image_meta.json :\n{design_inputs['image_meta_raw']}\n\n"
+            f"- design/constitution_design.yaml :\n{design_inputs['constitution_design_raw']}"
+        )
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -125,6 +728,8 @@ class EtapeManager:
 
         raw_output = self.model.invoke(messages)
         steps = StrOutputParser().parse(raw_output.content)
+        steps = self._enforce_frontend_components_step(steps, detected_components, layout_blueprint)
+        steps = self._enforce_backend_components_relation(steps, domain_modules)
 
         self.etapes_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.etapes_path, "w", encoding="utf-8") as f:
@@ -145,6 +750,14 @@ class EtapeManager:
         existing_etapes = ""
         if self.etapes_path.exists():
             existing_etapes = self.etapes_path.read_text(encoding="utf-8")
+        design_inputs = self._load_design_inputs(constitution_content=constitution_content)
+        detected_components = design_inputs["detected_components"]
+        domain_modules = design_inputs["domain_modules"]
+        mapping_modules = design_inputs["mapping_modules"]
+        layout_blueprint = design_inputs["layout_blueprint"]
+        detected_components_text = ", ".join(detected_components) if detected_components else "(aucun composant detecte)"
+        domain_modules_text = ", ".join(domain_modules) if domain_modules else "(aucun module detecte)"
+        mapping_modules_text = ", ".join(mapping_modules) if mapping_modules else "(aucun module detecte)"
 
         system_prompt = """Tu es un chef de projet DevOps. Ta mission est d'extraire la NOUVELLE fonctionnalité
             ajoutée à la Constitution et de la transformer en une ou plusieurs ÉTAPES TECHNIQUES à la suite du plan existant.
@@ -160,9 +773,27 @@ class EtapeManager:
             - Ne pas répéter les étapes déjà présentes dans le plan actuel.
             - **RÈGLE RÉALITÉ** : Marquer [x] UNIQUEMENT si le fichier est dans la Semantic Map.
             - Si un fichier n'est pas vu sur le disque, laisse la tâche en [ ].
+            - Si la nouveauté concerne le Frontend/UI, utiliser l'ordre de verite suivant : `Constitution/CONSTITUTION.md` (en premier), `Constitution/MappingComponent.md` (en second), puis `design/constitution_design.yaml`, puis `design/image_meta.json`.
+            - Si l'étape `*_Frontend_Components` est créée ou complétée (ID dynamique), détailler les sous-tâches à partir de DESIGN_INPUTS.detected_components (une sous-tâche par composant détecté).
+            - Pour `*_Frontend_Components` (ID dynamique), inclure le montage logique (component placement) selon DESIGN_INPUTS.layout_blueprint, les modules metier de la Constitution, et la vision de MappingComponent.
+            - Si une étape `*_Backend_API_Modules` / `*_API_Modules` est créée ou complétée, inclure explicitement le lien routes/controllers <-> composants/pages frontend.
             - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""
 
-        user_message = f"CONSTITUTION :\n{constitution_content}\n\nPLAN ACTUEL :\n{existing_etapes}\n\nSEMANTIC MAP :\n{semantic_map}"
+        user_message = (
+            f"CONSTITUTION :\n{constitution_content}\n\n"
+            f"PLAN ACTUEL :\n{existing_etapes}\n\n"
+            f"SEMANTIC MAP :\n{semantic_map}\n\n"
+            f"DESIGN INPUTS :\n"
+            f"- source_primary: Constitution/CONSTITUTION.md (bloc CONSTITUTION ci-dessus)\n"
+            f"- source_secondary: Constitution/MappingComponent.md\n"
+            f"- domain_modules_from_constitution: {domain_modules_text}\n\n"
+            f"- domain_modules_from_mapping_component: {mapping_modules_text}\n\n"
+            f"- detected_components (depuis design/image_meta.json): {detected_components_text}\n\n"
+            f"- layout_blueprint (derive de CONSTITUTION + MappingComponent + design):\n{design_inputs['layout_blueprint_text']}\n\n"
+            f"- Constitution/MappingComponent.md :\n{design_inputs['mapping_component_raw']}\n\n"
+            f"- design/image_meta.json :\n{design_inputs['image_meta_raw']}\n\n"
+            f"- design/constitution_design.yaml :\n{design_inputs['constitution_design_raw']}"
+        )
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -171,6 +802,8 @@ class EtapeManager:
 
         raw_output = self.model.invoke(messages)
         new_steps = StrOutputParser().parse(raw_output.content)
+        new_steps = self._enforce_frontend_components_step(new_steps, detected_components, layout_blueprint)
+        new_steps = self._enforce_backend_components_relation(new_steps, domain_modules)
 
         # Append to etapes.md
         with open(self.etapes_path, "a", encoding="utf-8") as f:
@@ -320,7 +953,6 @@ class EtapeManager:
 
     def _dependency_installed(self, check_root: Path, dep_name: str) -> bool:
         """Vérifie si une dépendance NPM est installée (via package.json)."""
-        import json
         pkg_paths = [
             check_root / "package.json",
             check_root / "backend" / "package.json",
@@ -340,7 +972,6 @@ class EtapeManager:
 
     def _script_exists(self, check_root: Path, script_name: str) -> bool:
         """Vérifie si un script npm existe dans le package.json."""
-        import json
         pkg_paths = [
             check_root / "package.json",
             check_root / "backend" / "package.json",
@@ -358,7 +989,12 @@ class EtapeManager:
                     continue
         return False
 
-    def mark_step_as_completed(self, step_id: str, synthesis: str = None, project_root: str = None) -> bool:
+    def mark_step_as_completed(
+        self,
+        step_id: str,
+        synthesis: str | None = None,
+        project_root: str | None = None,
+    ) -> tuple[bool, int, int]:
         """Passe une étape majeure de [ ] à [x]. Les sous-tâches sont cochées intelligemment 
         en vérifiant l'existence des fichiers/dossiers mentionnés sur le disque."""
         if not self.etapes_path.exists():
@@ -511,9 +1147,9 @@ class EtapeManager:
             if re.search(already_done_pattern, self.etapes_path.read_text(encoding="utf-8"), re.MULTILINE):
                 logger.info("Étape '%s' déjà marquée comme terminée.", step_id)
                 if synthesis: self.add_step_to_history(step_id, synthesis)
-                return True
+                return True, 0, 0
             logger.warning("Étape '%s' non trouvée.", step_id)
-            return False
+            return False, 0, 0
 
         if header_index != -1 and checked_count == total_subtasks and total_subtasks > 0:
             updated_lines[header_index] = updated_lines[header_index].replace("[ ]", "[x]")
