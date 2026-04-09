@@ -187,6 +187,7 @@ class AgentState(TypedDict):
     scanner_missing_modules: List[str]  # Modules detected as missing by scanner
     attempted_installs: List[str]  # Modules already attempted for installation
     installed_modules: List[str]  # Modules that were successfully installed
+    forced_install_packages: List[str]  # Packages to install even if scanner reports 0
     dependency_cycles: int  # Count of circular dependency detection cycles
     graph_steps: int  # Total number of orchestration steps executed
     
@@ -1885,12 +1886,29 @@ export default app;
             main_path = self.root / "frontend/src/main.tsx"
             if not main_path.exists():
                 logger.info("   -> Creation de frontend/src/main.tsx (template de base)")
-                main_template = '''import React from 'react';
+                template_candidates = [
+                    self.root / ".speckit" / "templates" / "main.vite.react.template.tsx",
+                    Path(__file__).parent / "templates" / "main.vite.react.template.tsx",
+                ]
+                main_template = None
+                for candidate in template_candidates:
+                    if candidate.exists():
+                        main_template = candidate.read_text(encoding="utf-8")
+                        logger.info(f"   -> Template main.tsx charge depuis {candidate}")
+                        break
+                if not main_template:
+                    main_template = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error("Root element '#root' not found");
+}
+
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,

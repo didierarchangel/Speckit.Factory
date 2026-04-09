@@ -301,12 +301,35 @@ def generate_react_vite_project(target_path: Path):
         "devDependencies": {
             "vite": "^5.0.0",
             "@vitejs/plugin-react": "^4.0.0",
-            "typescript": "^5.0.0"
+            "typescript": "^5.0.0",
+            "@types/react": "^18.0.0",
+            "@types/react-dom": "^18.0.0"
         }
     }
     
     (frontend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     (src_path / "App.tsx").write_text("export default function App() {\n  return <h1>React + Vite</h1>;\n}\n")
+    main_template_path = Path(__file__).parent / "templates" / "main.vite.react.template.tsx"
+    main_content = (
+        main_template_path.read_text(encoding="utf-8")
+        if main_template_path.exists()
+        else (
+            "import React from 'react';\n"
+            "import ReactDOM from 'react-dom/client';\n"
+            "import App from './App.tsx';\n"
+            "import './index.css';\n\n"
+            "const rootElement = document.getElementById('root');\n\n"
+            "if (!rootElement) {\n"
+            "  throw new Error(\"Root element '#root' not found\");\n"
+            "}\n\n"
+            "ReactDOM.createRoot(rootElement).render(\n"
+            "  <React.StrictMode>\n"
+            "    <App />\n"
+            "  </React.StrictMode>,\n"
+            ");\n"
+        )
+    )
+    (src_path / "main.tsx").write_text(main_content, encoding="utf-8")
     click.echo("[OK] Projet React (Vite) configure")
 
 def generate_nextjs_project(target_path: Path):
@@ -663,6 +686,13 @@ def init(path, here):
             target_ts = target_path / "frontend" / "tsconfig.json"
             shutil.copy(str(source), str(target_ts))
             click.echo("[OK] `frontend/tsconfig.json` initialisé.")
+
+    # 2.1 Injection du snippet TypeScript garanti pour React+Vite
+    if selected_frontend_id == "react-vite":
+        main_template_src = factory_root / "core" / "templates" / "main.vite.react.template.tsx"
+        if main_template_src.exists():
+            shutil.copy(str(main_template_src), str(templates_dir / "main.vite.react.template.tsx"))
+            click.echo("[OK] Template Frontend `main.tsx` (React+Vite) stocké localement.")
 
     # Injection du tsconfig.json.example à la racine (pour visibilité utilisateur)
     # On prend le backend par défaut pour l'exemple racine
