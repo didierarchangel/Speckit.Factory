@@ -7,7 +7,7 @@ import time
 import re
 import json
 from pathlib import Path
-from typing import TypedDict, List, Any, Dict
+from typing import TypedDict, List, Any, Dict, Optional
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
@@ -197,7 +197,7 @@ class AgentState(TypedDict):
     path_guard_issues: List[dict]  # Path validation issues detected
     esm_status: str  # ESM compatibility status
     esm_resolver_status: str  # ESM import resolver status
-    typescript_errors: List[str]  # TypeScript compilation errors
+    typescript_errors: List[dict]  # TypeScript compilation errors
     typescript_validation_status: str  # TypeScript validation result
     
     # Snapshot tracking for diff management
@@ -2029,6 +2029,46 @@ ReactDOM.createRoot(rootElement).render(
             "validation_status": "VALIDATED" if status == "PASSED" else "VALIDATION_FAILED"
         }
 
+    def _is_typescript_project(self, module_dir: Path) -> bool:
+        """Detecte si un projet cible TypeScript (via tsconfig.json ou package.json 'type')."""
+        tsconfig = module_dir / "tsconfig.json"
+        if tsconfig.exists():
+            return True
+        
+        # Check package.json for "type": "module" ou typescript tooling
+        pkg_path = module_dir / "package.json"
+        if pkg_path.exists():
+            try:
+                pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                # Si devDependencies contient typescript ou @types/*, c'est un projet TS
+                dev_deps = set(pkg_data.get("devDependencies", {}).keys())
+                if "typescript" in dev_deps or any(d.startswith("@types/") for d in dev_deps):
+                    return True
+            except:
+                pass
+        
+        return False
+    
+    def _get_types_for_package(self, pkg_name: str) -> Optional[str]:
+        """Retourne le nom du package @types/* correspondant, ou None."""
+        # Mapping des packages populaires a leur @types equivalents
+        types_mapping = {
+            "react": "@types/react",
+            "react-dom": "@types/react-dom",
+            "react-router-dom": "@types/react-router-dom",
+            "axios": "@types/axios",
+            "lodash": "@types/lodash",
+            "express": "@types/express",
+            "node": "@types/node",
+            "jest": "@types/jest",
+            "cors": "@types/cors",
+            "morgan": "@types/morgan",
+            "bcryptjs": "@types/bcryptjs",
+            "jsonwebtoken": "@types/jsonwebtoken",
+            "dotenv": "@types/dotenv",
+        }
+        return types_mapping.get(pkg_name)
+
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
         Valide et repare les dependances AVANT npm install.
@@ -2037,8 +2077,9 @@ ReactDOM.createRoot(rootElement).render(
         1. Utilise SemanticScanner pour detecter les VRAIES dependances utilisees
         2. Compare avec package.json
         3. Ajoute les dependances manquantes a package.json (pas les hallucinations LLM)
+        4. [NEW] Pour les projets TypeScript, auto-ajoute @types/* correspondants
         
-        Resultat: Zero hallucinations de dependances, seulement des imports reels.
+        Resultat: Zero hallucinations de dependances, seulement des imports reels + Types-First.
         """
         logger.info("[SCAN] Validation des dependances (avant npm install)...")
         
@@ -2093,6 +2134,8 @@ ReactDOM.createRoot(rootElement).render(
                         continue
                     
                     # [ADD] 2. Ajouter les NOUVELLES dependances manquantes (filtrees)
+                    is_typescript = self._is_typescript_project(target_dir)
+                    
                     for pkg in missing_dependencies:
                         if pkg in NODE_BUILTINS or pkg.startswith("node:"):
                             continue
@@ -2107,6 +2150,20 @@ ReactDOM.createRoot(rootElement).render(
                         pkg_data[section][pkg] = "latest"
                         fixed_issues.append(f"Added {pkg} to {section}")
                         logger.info(f"[ADD] Ajoute {pkg} aux {section}")
+                        
+                        # [NEW] TYPES-FIRST APPROACH: Pour chaque package ajoute en TypeScript,
+                        # ajouter automatiquement le @types/* correspondant
+                        if is_typescript and not is_dev:  # Types-First seulement pour dependencies (non @types/*, non ts-*)
+                            types_package = self._get_types_for_package(pkg)
+                            if types_package:
+                                if "devDependencies" not in pkg_data:
+                                    pkg_data["devDependencies"] = {}
+                                
+                                if types_package not in pkg_data["devDependencies"]:
+                                    pkg_data["devDependencies"][types_package] = "latest"
+                                    fixed_issues.append(f"Added {types_package} to devDependencies (Types-First)")
+                                    logger.info(f"[TYPES-FIRST] Auto-ajoute {types_package} pour {pkg} (TypeScript project)")
+
                     
                     # Sauvegarder si modifications
                     if fixed_issues:
@@ -2455,6 +2512,22 @@ ReactDOM.createRoot(rootElement).render(
                 logger.warning(f"[WARN] Audit REJETE par systeme (Checklist incomplete: {missing}/{total_tasks} manquantes). Forcage REJETE.")
                 verifier_status = "REJETE"
             
+            # [NEW] TYPESCRIPT STRICT MODE: Rejeter si compilation TypeScript echouée
+            # Cette verification est INDEPENDANTE du LLM - elle est basee sur LE COMPILATEUR
+            typescript_status = state.get("typescript_validation_status", "SKIPPED")
+            if typescript_status == "FAILED":
+                logger.error("[STRICT] Code REJETE: La validation TypeScript a echouée (errors detectes par tsc --noEmit)")
+                verifier_status = "REJETE"
+                # Inclure les erreurs TypeScript specifiques dans le feedback
+                ts_errors = state.get("typescript_errors", [])
+                if ts_errors:
+                    error_details = "\n".join([
+                        f"  - {err.get('file', 'unknown')}:{err.get('line', '?')} - {err.get('message', 'Unknown error')}"
+                        for err in ts_errors[:5]  # Montrer les 5 premiers
+                    ])
+                    logger.error(f"[ERROR] Erreurs TypeScript:\n{error_details}")
+
+            
             # [SAFE] IMPROVED AUDIT LOGIC:
             # - Si generation echouee OU structure invalide OU verifier=REJETE -> REJETE
             # [SAFE] HANDLING "Aucune alerte" FALSE POSITIVE
@@ -2468,6 +2541,8 @@ ReactDOM.createRoot(rootElement).render(
             if generation_failed or not structure_valid or verifier_status == "REJETE":
                 if missing > 0:
                     logger.warning(f"[WARN] Audit REJETE: Il manque encore des fichiers obligatoires.")
+                elif typescript_status == "FAILED":
+                    logger.warning(f"[WARN] Audit REJETE: Erreurs de typage TypeScript detectees (tsc --noEmit).")
                 elif generation_failed:
                     logger.warning(f"[WARN] Audit REJETE: La generation technique a echoue (TSC errors).")
                 elif not structure_valid:
@@ -2477,11 +2552,33 @@ ReactDOM.createRoot(rootElement).render(
                 feedback_msg = result.get('action_corrective', '')
                 if missing > 0:
                     feedback_msg = f"Checklist incomplete. You missed {missing} task(s)/file(s). You MUST create them: " + state.get("feedback_correction", "")
+                elif typescript_status == "FAILED":
+                    ts_errors = state.get("typescript_errors", [])
+                    if ts_errors:
+                        error_lines = [f"{err.get('file', 'unknown')}:{err.get('line', '?')} - {err.get('message', 'Error')}" 
+                                      for err in ts_errors[:5]]
+                        feedback_msg = "TypeScript compilation failed with these errors:\n" + "\n".join(error_lines)
+                        if len(ts_errors) > 5:
+                            feedback_msg += f"\n... and {len(ts_errors) - 5} more error(s)"
+                    else:
+                        feedback_msg = "TypeScript compilation failed. Run 'tsc --noEmit' to see detailed errors."
                 elif not feedback_msg and generation_failed:
                     feedback_msg = "TypeScript validation failed. Please fix the compilation errors in the terminal diagnostics."
             else:
                 status = "APPROUVE"
                 feedback_msg = ""
+            
+            # [STRICT] Double-check: Si TypeScript a échoué, JAMAIS d'approbation
+            if typescript_status == "FAILED" and status == "APPROUVE":
+                logger.error("[STRICT] OVERRIDE: Changing APPROUVE to REJETE due to TypeScript validation failure")
+                status = "REJETE"
+                ts_errors = state.get("typescript_errors", [])
+                if ts_errors:
+                    error_lines = [f"{err.get('file', 'unknown')}:{err.get('line', '?')} - {err.get('message', 'Error')}" 
+                                  for err in ts_errors[:5]]
+                    feedback_msg = "TypeScript compilation failed with these errors:\n" + "\n".join(error_lines)
+                else:
+                    feedback_msg = "TypeScript compilation failed. Please fix typing errors."
             
             if status == "APPROUVE":
                 logger.info(f"[OK] Code APPROUVE. Score: {final_score}")
@@ -3649,6 +3746,7 @@ ReactDOM.createRoot(rootElement).render(
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("architecture_guard_node", self.architecture_guard_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
+        self.graph_builder.add_node("typescript_validate_node", self.typescript_validate_node)
         self.graph_builder.add_node("esm_compatibility_node", self.esm_compatibility_node)
         self.graph_builder.add_node("esm_import_resolver_node", self.esm_import_resolver_node)
         self.graph_builder.add_node("dependency_resolver_node", self.dependency_resolver_node)
@@ -3678,7 +3776,8 @@ ReactDOM.createRoot(rootElement).render(
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node", "verify_node": "verify_node"})
         self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})
         
-        self.graph_builder.add_edge("persist_node", "esm_compatibility_node")
+        self.graph_builder.add_edge("persist_node", "typescript_validate_node")
+        self.graph_builder.add_edge("typescript_validate_node", "esm_compatibility_node")
         self.graph_builder.add_edge("esm_compatibility_node", "esm_import_resolver_node")
         self.graph_builder.add_edge("esm_import_resolver_node", "dependency_resolver_node")
         self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
