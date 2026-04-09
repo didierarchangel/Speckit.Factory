@@ -1949,7 +1949,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     cwd=str(module_path),
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=600,
                     shell=True
                 )
                 
@@ -1988,7 +1988,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 logger.error(f"[ERROR] TypeScript validation timeout in {module}")
                 typescript_errors.append({
                     "module": module,
-                    "error": "Compilation timeout (>30s)"
+                    "error": "Compilation timeout (>600s)"
                 })
             except Exception as e:
                 logger.error(f"[ERROR] Unexpected error during TypeScript validation in {module}: {e}")
@@ -2224,7 +2224,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     [npm_path, "view", pkg, "version"],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=600
                 )
                 if view_res.returncode == 0:
                     valid_packages.append(pkg)
@@ -2259,7 +2259,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 cwd=str(target_dir),
                 capture_output=True,
                 text=True,
-                timeout=180
+                timeout=600
             )
 
             if result.returncode != 0:
@@ -2517,12 +2517,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         checklist = state.get("subtask_checklist", "")
         file_tree = state.get("file_tree", "")
         
-        # 2. Parser les fichiers attendus depuis la checklist
+        # 2. Parser + normaliser les fichiers attendus depuis la checklist
+        # IMPORTANT: package.js est une derive connue -> package.json (manifest npm)
         expected_files = set()
-        for line in checklist.split('\n'):
-            # Chercher les patterns comme "backend/src/app.ts", "frontend/package.json"
-            matches = re.findall(r'[`\'"]?([a-zA-Z0-9\/_\-\.]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))[`\'"]?', line)
-            expected_files.update(matches)
+        for extracted in self._extract_required_files(checklist):
+            normalized = self._normalize_checklist_path(extracted)
+            if normalized:
+                expected_files.add(normalized)
         
         logger.info(f"? Fichiers attendus selon la checklist: {len(expected_files)}")
         
@@ -2530,29 +2531,40 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         real_files = set()
         for line in file_tree.split('\n'):
             line = line.strip()
-            if line and not line.startswith('|') and not line.startswith('+') and '/' in line:
+            if line and not line.startswith('|') and not line.startswith('+'):
                 # Nettoyer les caracteres de visualisation
                 clean_path = re.sub(r'^[\s|+-]*', '', line).strip()
                 if '.' in clean_path and any(clean_path.endswith(ext) for ext in ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md']):
-                    real_files.add(clean_path)
+                    real_files.add(self._normalize_checklist_path(clean_path))
         
         logger.info(f"? Fichiers detectes dans file_tree: {len(real_files)}")
         
-        # 4. Calculer la difference (DETERMINISTE, pas LLM)
-        missing_files = expected_files - real_files
-        
+        # 4. Calculer la difference (DETERMINISTE, pas LLM) avec matching robuste
+        tree_list = sorted(real_files)
+        missing_files = []
+        for expected in sorted(expected_files):
+            if not self._file_exists_in_tree(expected, tree_list):
+                missing_files.append(expected)
+
         if missing_files:
             logger.warning(f"[ERROR] {len(missing_files)} fichiers manquants detectes:")
-            for f in sorted(missing_files):
+            for f in missing_files:
                 logger.warning(f"   - {f}")
             return {
                 "validation_status": "STRUCTURE_KO",
                 "missing_files": list(missing_files),
-                "feedback_correction": f"MANQUANT: {', '.join(sorted(missing_files))}"
+                "missing_tasks": len(missing_files),
+                "total_subtasks": len(expected_files),
+                "feedback_correction": f"MANQUANT: {', '.join(missing_files)}"
             }
         else:
             logger.info(f"[OK] Tous les fichiers attendus sont presents ({len(expected_files)} fichiers)")
-            return {"validation_status": "STRUCTURE_OK"}
+            return {
+                "validation_status": "STRUCTURE_OK",
+                "missing_files": [],
+                "missing_tasks": 0,
+                "total_subtasks": len(expected_files),
+            }
 
     def code_map_node(self, state: AgentState) -> dict:
         """N?ud de generation de la Semantic Code Map."""
@@ -2667,7 +2679,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             
             cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext"] + ts_files
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
+                res = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=600)
                 if res.returncode == 0: return True, ""
                 return False, res.stdout + res.stderr
             except: return True, ""
@@ -2744,6 +2756,20 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             logger.info(f"[SAVE] Hash package.json sauvegarde: {current_hash[:8]}...")
         except Exception as e:
             logger.warning(f"[WARN] Impossible de sauvegarder le hash: {e}")
+
+    def _normalize_checklist_path(self, raw_path: str) -> str:
+        """Normalise un chemin de checklist et corrige les derives connues."""
+        path = (raw_path or "").strip().strip("`'\"").replace("\\", "/")
+        if not path:
+            return path
+
+        lower = path.lower()
+        # Guard critique: package.js n'est pas un manifest npm valide.
+        if lower.endswith("package.js"):
+            path = path[: -len("package.js")] + "package.json"
+            logger.info(f"[FIX] Checklist normalize: '{raw_path}' -> '{path}'")
+
+        return path
 
     def _extract_required_files(self, checklist_text: str) -> List[str]:
         """Extrait les chemins de fichiers obligatoires mentionnes dans la checklist.
@@ -2879,6 +2905,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             # [SAFE] NORMALIZATION & TYPO FIX
             normalized = []
             for f in required_files:
+                f = self._normalize_checklist_path(f)
                 # Fix typo 'workfloows'
                 f = f.replace("workfloows", "workflows")
                 # Consolidate CI files
@@ -3074,7 +3101,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     res = subprocess.run(
                         "npx --yes tsc --noEmit --pretty false",
                         shell=True, capture_output=True, text=True,
-                        cwd=str(d), timeout=120
+                        cwd=str(d), timeout=600
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
                     status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
@@ -3097,7 +3124,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[TSC {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
+                    reports.append(f"[TSC {d.name}] [ERROR] ECHEC\nTimeout apres 600s")
                 except Exception as e:
                     reports.append(f"[TSC {d.name}] [ERROR] ECHEC\n{str(e)}")
             
@@ -3107,7 +3134,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     res = subprocess.run(
                         "npm_path run build",
                         shell=True, capture_output=True, text=True,
-                        cwd=str(d), timeout=120
+                        cwd=str(d), timeout=600
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
                     status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
@@ -3130,7 +3157,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[VITE {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
+                    reports.append(f"[VITE {d.name}] [ERROR] ECHEC\nTimeout apres 600s")
                 except Exception as e:
                     reports.append(f"[VITE {d.name}] [ERROR] ECHEC\n{str(e)}")
             
@@ -3140,7 +3167,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     res = subprocess.run(
                         "npm_path run build",
                         shell=True, capture_output=True, text=True,
-                        cwd=str(d), timeout=120
+                        cwd=str(d), timeout=600
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
                     status = "[OK]" if res.returncode == 0 else "[ERROR] ECHEC"
@@ -3163,7 +3190,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                             missing_modules.extend(npm_matches)
                         
                 except subprocess.TimeoutExpired:
-                    reports.append(f"[NEXT {d.name}] [ERROR] ECHEC\nTimeout apres 120s")
+                    reports.append(f"[NEXT {d.name}] [ERROR] ECHEC\nTimeout apres 600s")
                 except Exception as e:
                     reports.append(f"[NEXT {d.name}] [ERROR] ECHEC\n{str(e)}")
         

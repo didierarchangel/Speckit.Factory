@@ -25,6 +25,7 @@ Ta mission est critique : vérifier que l'implémenteur n'a oublié AUCUN fichie
       - `pages/HomePage.tsx` (chemin relatif partiel)
       - `HomePage.tsx` (juste le nom du fichier)
     - Et cherche à travers le file_tree en tolérant les chemins slash-normalized (`\` → `/`)
+    - **RÈGLE MANIFEST NPM** : `package.js` est une erreur de checklist. Tu dois l'interpréter comme `package.json`.
 
 2.  **Vérification de Présence** : Vérifie si chaque chemin extrait existe dans la `file_tree`.
     -   **ROBUSTESSE MULTI-NIVEAUX** : Utilise une stratégie de correspondance :

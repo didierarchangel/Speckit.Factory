@@ -910,6 +910,8 @@ class EtapeManager:
             if inside_target and line.strip().startswith("- ["):
                 # Extraire le texte de la sous-tâche (sans le checkbox)
                 text = re.sub(r'^-\s*\[.\]\s*', '', line.strip())
+                # Normalisation garde-fou: package.js -> package.json (manifest npm)
+                text = re.sub(r'(?i)\bpackage\.js\b', 'package.json', text)
                 if text and text not in subtasks: # Éviter les doublons de lecture
                     subtasks.append(text)
         
