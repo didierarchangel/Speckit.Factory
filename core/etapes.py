@@ -624,6 +624,415 @@ class EtapeManager:
 
         return "\n".join(lines)
 
+    def _pluralize_resource(self, slug: str) -> str:
+        """Pluralisation simple et stable pour routes/API."""
+        value = (slug or "").strip().lower()
+        if not value:
+            return value
+        if value.endswith("s"):
+            return value
+        if len(value) > 1 and value.endswith("y") and value[-2] not in "aeiou":
+            return value[:-1] + "ies"
+        return value + "s"
+
+    def _extract_model_entities_from_steps(self, lines: list[str]) -> list[dict]:
+        """Extrait les entites declarees dans l'etape *_Modelisation_Donnees_MongoDB."""
+        step_ranges = self._find_step_ranges_by_suffix(lines, ["Modelisation_Donnees_MongoDB"])
+        entities: list[dict] = []
+        seen_slugs: set[str] = set()
+
+        for start_index, end_index, _step_id in step_ranges:
+            for idx in range(start_index + 1, end_index):
+                stripped = lines[idx].strip()
+                if not stripped.startswith("- ["):
+                    continue
+
+                candidates: list[str] = []
+
+                # Priorite: chemins entre backticks (backend/src/models/X.model.ts)
+                for token in re.findall(r"`([^`]+)`", stripped):
+                    token_norm = token.strip().replace("\\", "/")
+                    if token_norm.lower().endswith(".model.ts"):
+                        stem = token_norm.split("/")[-1][: -len(".model.ts")]
+                        if stem:
+                            candidates.append(stem)
+
+                # Fallback: references non quoted "X.model.ts"
+                for stem in re.findall(r"\b([A-Za-z][A-Za-z0-9_-]*)\.model\.ts\b", stripped):
+                    if stem:
+                        candidates.append(stem)
+
+                for stem in candidates:
+                    slug = self._component_filename(stem).lower()
+                    if not slug or slug in seen_slugs:
+                        continue
+                    seen_slugs.add(slug)
+                    entities.append({
+                        "name": stem,
+                        "slug": slug,
+                        "resource": self._pluralize_resource(slug),
+                    })
+
+        return entities
+
+    def _build_model_entities_fallback(self, domain_modules: list[str]) -> list[dict]:
+        """Fallback entites si aucune entite n'est explicite dans l'etape modelisation."""
+        entities: list[dict] = []
+        seen_slugs: set[str] = set()
+        for module_name in domain_modules:
+            module_slug = self._component_filename(module_name).lower()
+            if not module_slug:
+                continue
+            singular_slug = module_slug[:-1] if module_slug.endswith("s") and len(module_slug) > 3 else module_slug
+            if singular_slug in seen_slugs:
+                continue
+            seen_slugs.add(singular_slug)
+            entities.append({
+                "name": singular_slug.capitalize(),
+                "slug": singular_slug,
+                "resource": self._pluralize_resource(singular_slug),
+            })
+        return entities
+
+    def _pick_auth_entity(self, entities: list[dict]) -> dict | None:
+        """Choisit l'entite auth prioritaire (User/Account/Utilisateur...)."""
+        if not entities:
+            return None
+        priorities = ("user", "utilisateur", "account", "admin", "staff", "employee", "personnel")
+        for pref in priorities:
+            for entity in entities:
+                slug = str(entity.get("slug", ""))
+                if slug == pref or slug.startswith(pref):
+                    return entity
+        return entities[0]
+
+    def _select_api_entities(self, entities: list[dict]) -> list[dict]:
+        """Retient les entites metier pour CRUD/API (hors entites auth systeme si possible)."""
+        if not entities:
+            return []
+        excluded = {
+            "user", "users", "utilisateur", "utilisateurs",
+            "account", "accounts", "session", "sessions",
+            "token", "tokens", "role", "roles", "permission", "permissions",
+        }
+        filtered = [entity for entity in entities if str(entity.get("slug", "")) not in excluded]
+        return filtered or entities
+
+    def _extract_backend_api_resources_from_steps(self, lines: list[str]) -> list[str]:
+        """Extrait les ressources backend exposees dans l'etape *_Backend_API_Modules."""
+        step_ranges = self._find_step_ranges_by_suffix(lines, ["Backend_API_Modules", "API_Modules"])
+        resources: list[str] = []
+        seen: set[str] = set()
+
+        for start_index, end_index, _step_id in step_ranges:
+            for idx in range(start_index + 1, end_index):
+                stripped = lines[idx].strip()
+                if not stripped.startswith("- ["):
+                    continue
+
+                candidates: list[str] = []
+
+                # Pattern explicite: "CRUD pour `patients`"
+                for token in re.findall(r"CRUD\s+pour\s+`([^`]+)`", stripped, flags=re.IGNORECASE):
+                    candidates.append(token.strip())
+
+                # Pattern chemin route: backend/src/routes/{resource}.routes.ts
+                for token in re.findall(r"backend/src/routes/([A-Za-z0-9_-]+)\.routes\.ts", stripped, flags=re.IGNORECASE):
+                    candidates.append(token.strip())
+
+                for candidate in candidates:
+                    slug = self._component_filename(candidate).lower()
+                    if not slug or slug in seen:
+                        continue
+                    seen.add(slug)
+                    resources.append(slug)
+
+        return resources
+
+    def _enforce_frontend_steps_from_backend_correlation(
+        self,
+        markdown_steps: str,
+        domain_modules: list[str],
+    ) -> str:
+        """Aligne Architecture/API_LAYER/Frontend_Components sur la modelisation + API backend."""
+        if not markdown_steps:
+            return markdown_steps
+
+        lines = markdown_steps.splitlines()
+        model_entities = self._extract_model_entities_from_steps(lines)
+        if not model_entities:
+            model_entities = self._build_model_entities_fallback(domain_modules)
+
+        auth_entity = self._pick_auth_entity(model_entities)
+        api_entities = self._select_api_entities(model_entities)
+        backend_resources = self._extract_backend_api_resources_from_steps(lines)
+
+        resource_entities: list[dict] = []
+        if backend_resources:
+            mapped = {str(entity.get("resource", "")): entity for entity in api_entities}
+            for resource in backend_resources:
+                if resource in mapped:
+                    resource_entities.append(mapped[resource])
+                else:
+                    resource_entities.append({
+                        "name": resource.capitalize(),
+                        "slug": resource[:-1] if resource.endswith("s") and len(resource) > 3 else resource,
+                        "resource": resource,
+                    })
+        else:
+            resource_entities = api_entities
+
+        model_step_ref = "`*_Modelisation_Donnees_MongoDB`"
+        backend_api_ref = "`*_Backend_API_Modules`"
+        api_layer_ref = "`*_API_LAYER`"
+
+        # 1) Etape Architecture Frontend
+        arch_ranges = self._find_step_ranges_by_suffix(lines, ["Architecture_Frontend", "Frontend_Architecture"])
+        for start_index, end_index, _step_id in sorted(arch_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            align_sig = self._normalize_component_name("architecture_frontend modelisation_donnees_mongodb backend_api_modules")
+            if align_sig not in existing_text_norm:
+                additions.append(
+                    f"- [ ] Aligner l'architecture frontend sur les entites de l'etape {model_step_ref} et les endpoints exposes dans {backend_api_ref}"
+                )
+
+            if resource_entities:
+                routes_chain = ", ".join(f"`/{entity['resource']}`" for entity in resource_entities)
+                router_sig = self._normalize_component_name(f"reactrouter{routes_chain}")
+                if router_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Mettre en place React Router avec des routes metier alignees sur les ressources backend: {routes_chain}"
+                    )
+
+                stores_chain = ", ".join(f"`{entity['resource']}`" for entity in resource_entities)
+                zustand_sig = self._normalize_component_name(f"zustand{stores_chain}stores")
+                if zustand_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Structurer Zustand par module backend ({stores_chain}) et preparer les slices/stores relies a {api_layer_ref}"
+                    )
+
+            axios_sig = self._normalize_component_name("axiosinstanceinterceptorsjwtbackend_auth_jwt")
+            if axios_sig not in existing_text_norm:
+                additions.append(
+                    "- [ ] Configurer une instance Axios centralisee (baseURL, interceptors auth/erreurs) alignee sur les routes `login/register` et JWT backend"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        # 2) Etape API Layer
+        api_layer_ranges = self._find_step_ranges_by_suffix(lines, ["API_LAYER", "Api_Layer"])
+        for start_index, end_index, _step_id in sorted(api_layer_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            if resource_entities:
+                api_align_sig = self._normalize_component_name("api_layer backend_api_modules modelisation_donnees_mongodb")
+                if api_align_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Aligner l'API layer frontend sur {backend_api_ref} en utilisant les modeles de {model_step_ref}"
+                    )
+
+                for entity in resource_entities:
+                    resource = str(entity["resource"])
+                    name = str(entity["name"])
+                    svc_sig = self._normalize_component_name(f"{resource}.api.ts crud {name}")
+                    if svc_sig in existing_text_norm:
+                        continue
+                    additions.append(
+                        f"- [ ] Creer `frontend/src/api/{resource}.api.ts` avec CRUD Axios pour la ressource `{resource}` en miroir de `backend/src/routes/{resource}.routes.ts`"
+                    )
+
+            if auth_entity:
+                auth_name = str(auth_entity["name"])
+                auth_sig = self._normalize_component_name(f"auth.api.ts login register {auth_name}")
+                if auth_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Creer `frontend/src/api/auth.api.ts` pour `login`/`register` en coherence avec `{auth_name}.model.ts` et les middlewares JWT backend"
+                    )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        # 3) Etape Frontend Components (correlation backend <-> ui)
+        component_ranges = self._find_step_ranges_by_suffix(lines, ["Frontend_Components"])
+        for start_index, end_index, _step_id in sorted(component_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            corr_sig = self._normalize_component_name("frontend_components backend_api_modules api_layer endpoint ui")
+            if corr_sig not in existing_text_norm:
+                additions.append(
+                    f"- [ ] Corriger la correlation UI <-> backend: lier les composants/pages frontend aux endpoints de {backend_api_ref} via {api_layer_ref}"
+                )
+
+            for entity in resource_entities:
+                resource = str(entity["resource"])
+                module_slug = self._component_filename(str(entity["slug"]))
+                bind_sig = self._normalize_component_name(f"module_{module_slug} {resource}.api.ts dashboard")
+                if bind_sig in existing_text_norm:
+                    continue
+                additions.append(
+                    f"- [ ] Connecter la section `module_{module_slug}` et ses composants metier a `frontend/src/api/{resource}.api.ts` (chargement/liste/detail/actions) en respectant le contrat endpoint backend"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        return "\n".join(lines)
+
+    def _enforce_backend_steps_from_modelisation(
+        self,
+        markdown_steps: str,
+        domain_modules: list[str],
+    ) -> str:
+        """Rend Auth/API/Tests backend dependants des entites definies en modelisation MongoDB."""
+        if not markdown_steps:
+            return markdown_steps
+
+        lines = markdown_steps.splitlines()
+        model_entities = self._extract_model_entities_from_steps(lines)
+        if not model_entities:
+            model_entities = self._build_model_entities_fallback(domain_modules)
+
+        auth_entity = self._pick_auth_entity(model_entities)
+        api_entities = self._select_api_entities(model_entities)
+        model_list_text = ", ".join(f"`{entity['name']}.model.ts`" for entity in model_entities)
+        model_step_ref = "`*_Modelisation_Donnees_MongoDB`"
+
+        # 1) Etape Auth JWT
+        auth_ranges = self._find_step_ranges_by_suffix(lines, ["Backend_Auth_JWT", "Auth_JWT"])
+        for start_index, end_index, _step_id in sorted(auth_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            if auth_entity:
+                auth_name = str(auth_entity["name"])
+                auth_slug = str(auth_entity["slug"])
+                login_sig = self._normalize_component_name(f"loginregister{auth_slug}modelisationdonneesmongodb")
+                jwt_sig = self._normalize_component_name(f"jwt{auth_slug}modelisationdonneesmongodb")
+                if login_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Creer les routes `login` et `register` en s'appuyant sur `backend/src/models/{auth_name}.model.ts` defini dans l'etape {model_step_ref}"
+                    )
+                if jwt_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Configurer les middlewares JWT (generation, verification, roles) alignes sur le modele `{auth_name}.model.ts` de l'etape {model_step_ref}"
+                    )
+            else:
+                if "loginregistermodelisationdonneesmongodb" not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Creer les routes `login` et `register` en s'appuyant sur le modele d'authentification defini dans l'etape {model_step_ref}"
+                    )
+                if "jwtmodelisationdonneesmongodb" not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Configurer les middlewares JWT a partir du modele d'authentification defini dans l'etape {model_step_ref}"
+                    )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        # 2) Etape Backend API Modules
+        api_ranges = self._find_step_ranges_by_suffix(lines, ["Backend_API_Modules", "API_Modules"])
+        for start_index, end_index, _step_id in sorted(api_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_raw_norm = self._strip_accents("\n".join(existing_subtasks).lower())
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            if model_entities:
+                scope_sig = self._normalize_component_name("aligner backend_api_modules modelisation_donnees_mongodb")
+                if scope_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Aligner cette etape sur les modeles definis dans {model_step_ref} : {model_list_text}"
+                    )
+
+            # Garde-fou explicite contre hardcode patient unique
+            if "crud pour `patients`" in existing_text_raw_norm:
+                guard_sig = self._normalize_component_name("remplacer crud hardcodes patients modelisation")
+                if guard_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Remplacer les CRUD hardcodes (ex: `patients`) par des CRUD derives des modeles de l'etape {model_step_ref}"
+                    )
+
+            for entity in api_entities:
+                name = str(entity["name"])
+                resource = str(entity["resource"])
+                sig = self._normalize_component_name(f"crud{resource}{name}modelisationdonneesmongodb")
+                if sig in existing_text_norm:
+                    continue
+                additions.append(
+                    f"- [ ] Creer CRUD pour `{resource}` dans `backend/src/routes/{resource}.routes.ts` et `backend/src/controllers/{resource}.controller.ts` selon `{name}.model.ts` defini dans l'etape {model_step_ref}"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        # 3) Etape Tests Backend API
+        test_ranges = self._find_step_ranges_by_suffix(lines, ["Tests_Backend_API", "Backend_API_Tests", "Tests_API_Backend"])
+        for start_index, end_index, _step_id in sorted(test_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+            additions = []
+
+            if auth_entity:
+                auth_name = str(auth_entity["name"])
+                auth_test_sig = self._normalize_component_name(f"jestsupertestloginregisterjwt{auth_name}")
+                if auth_test_sig not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Ecrire des tests Jest/Supertest pour `login`/`register` et middlewares JWT bases sur `{auth_name}.model.ts` (etape {model_step_ref})"
+                    )
+            else:
+                if "jestsupertestloginregisterjwtmodelisationdonneesmongodb" not in existing_text_norm:
+                    additions.append(
+                        f"- [ ] Ecrire des tests Jest/Supertest pour `login`/`register` et middlewares JWT en reference a l'etape {model_step_ref}"
+                    )
+
+            for entity in api_entities:
+                name = str(entity["name"])
+                resource = str(entity["resource"])
+                sig = self._normalize_component_name(f"testscrud{resource}{name}jestsupertest")
+                if sig in existing_text_norm:
+                    continue
+                additions.append(
+                    f"- [ ] Ecrire les tests CRUD Jest/Supertest pour `{resource}` (create/read/update/delete) selon `{name}.model.ts` defini dans l'etape {model_step_ref}"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        return "\n".join(lines)
+
     def generate_steps_from_constitution(self, semantic_map: str = "") -> str:
         """Analyse la Constitution pour définir les étapes du projet avec des sous-tâches détaillées."""
         if not self.constitution_path.exists():
@@ -660,6 +1069,8 @@ class EtapeManager:
             9. Pour l'étape `*_Frontend_Components` (ID dynamique, numéro non imposé), générer des sous-tâches orientées composants à partir de DESIGN_INPUTS.detected_components (au moins une sous-tâche par composant détecté, si disponible).
             10. Pour l'étape `*_Frontend_Components` (ID dynamique), ajouter le montage logique (component placement) en t'appuyant sur DESIGN_INPUTS.layout_blueprint (shell + ordre des sections + composant -> zone + modules metier Constitution + vision MappingComponent).
             11. Les étapes backend `*_Backend_API_Modules` / `*_API_Modules` doivent explicitement relier routes/controllers aux composants/pages de l'étape `*_Frontend_Components`.
+            12. Les etapes backend `*_Backend_Auth_JWT`, `*_Backend_API_Modules` / `*_API_Modules` et `*_Tests_Backend_API` doivent etre configurees dynamiquement a partir des entites/modeles declares dans l'etape `*_Modelisation_Donnees_MongoDB` (pas de hardcode fixe type `patients`).
+            13. Les etapes frontend `*_Architecture_Frontend`, `*_API_LAYER` et `*_Frontend_Components` doivent etre correlees aux etapes backend (`*_Modelisation_Donnees_MongoDB` + `*_Backend_API_Modules`) pour eviter tout decouplage UI/API.
             
             OBLIGATION DE STRUCTURE :
             Afin de standardiser la qualité des pipelines, tu DOIS inclure (ou adapter) la structure d'étapes suivante pour garantir une architecture de type Web moderne (API + Frontend) complète :
@@ -670,7 +1081,7 @@ class EtapeManager:
             - 07_Creation_Structure_Dossiers (inclure backend/src/config, backend/src/tests, frontend/src/api, frontend/src/tests, frontend/src/types)
             - 08_Configuration_Environnement_Backend (inclure CORS_ORIGIN)
             - 09_Initialisation_Serveur_Backend (inclure cors() et express.json())
-            - 10_Modelisation_Donnees_MongoDB (Modèles des entités et relations)
+            - [ID dynamique]_Modelisation_Donnees_MongoDB (Modèles des entités et relations)
             - 11_Backend_Auth_JWT (Routes login/register, middlewares)
             - [ID dynamique]_Backend_API_Modules (Routes et controllers métier liés aux composants/pages frontend)
             - 13_Tests_Backend_API (Tests CRUD/Auth avec Jest et Supertest)
@@ -696,6 +1107,8 @@ class EtapeManager:
             - IMPORTANT : L'étape `## [ ] *_Frontend_Components` (ID dynamique) ne doit pas être sommaire. Elle doit lister les composants détectés dans DESIGN_INPUTS.detected_components (une sous-tâche claire par composant détecté), en plus des composants Auth/entités/dashboard.
             - IMPORTANT : L'étape `## [ ] *_Frontend_Components` (ID dynamique) doit inclure le montage explicite de chaque composant dans un layout logique (ex: topbar, sidebar, hero, stats, tables, forms) avec référence au shell `AppLayout`, à `Dashboard`, et aux modules metier de la Constitution.
             - IMPORTANT : L'étape `## [ ] *_Backend_API_Modules` (ou `*_API_Modules`) doit inclure des sous-tâches de mapping backend->frontend (routes/controllers alignés avec les composants/pages de `*_Frontend_Components`).
+            - IMPORTANT : Les sous-taches de `*_Backend_Auth_JWT`, `*_Backend_API_Modules` et `*_Tests_Backend_API` doivent referencer explicitement l'etape `*_Modelisation_Donnees_MongoDB` comme source de verite des entites backend.
+            - IMPORTANT : Les sous-taches de `*_Architecture_Frontend`, `*_API_LAYER` et `*_Frontend_Components` doivent referencer explicitement `*_Backend_API_Modules` et `*_Modelisation_Donnees_MongoDB` comme sources de verite backend.
 
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
@@ -731,6 +1144,8 @@ class EtapeManager:
         steps = StrOutputParser().parse(raw_output.content)
         steps = self._enforce_frontend_components_step(steps, detected_components, layout_blueprint)
         steps = self._enforce_backend_components_relation(steps, domain_modules)
+        steps = self._enforce_backend_steps_from_modelisation(steps, domain_modules)
+        steps = self._enforce_frontend_steps_from_backend_correlation(steps, domain_modules)
 
         self.etapes_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.etapes_path, "w", encoding="utf-8") as f:
@@ -778,6 +1193,8 @@ class EtapeManager:
             - Si l'étape `*_Frontend_Components` est créée ou complétée (ID dynamique), détailler les sous-tâches à partir de DESIGN_INPUTS.detected_components (une sous-tâche par composant détecté).
             - Pour `*_Frontend_Components` (ID dynamique), inclure le montage logique (component placement) selon DESIGN_INPUTS.layout_blueprint, les modules metier de la Constitution, et la vision de MappingComponent.
             - Si une étape `*_Backend_API_Modules` / `*_API_Modules` est créée ou complétée, inclure explicitement le lien routes/controllers <-> composants/pages frontend.
+            - Si des etapes `*_Backend_Auth_JWT`, `*_Backend_API_Modules` / `*_API_Modules`, `*_Tests_Backend_API` sont creees/completees, les sous-taches doivent etre derivees des entites/modeles de `*_Modelisation_Donnees_MongoDB` (eviter le hardcode fixe type `patients`).
+            - Si des etapes `*_Architecture_Frontend`, `*_API_LAYER`, `*_Frontend_Components` sont creees/completees, les sous-taches doivent etre derivees de `*_Modelisation_Donnees_MongoDB` et `*_Backend_API_Modules` (correlation frontend-backend obligatoire).
             - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""
 
         user_message = (
@@ -805,6 +1222,8 @@ class EtapeManager:
         new_steps = StrOutputParser().parse(raw_output.content)
         new_steps = self._enforce_frontend_components_step(new_steps, detected_components, layout_blueprint)
         new_steps = self._enforce_backend_components_relation(new_steps, domain_modules)
+        new_steps = self._enforce_backend_steps_from_modelisation(new_steps, domain_modules)
+        new_steps = self._enforce_frontend_steps_from_backend_correlation(new_steps, domain_modules)
 
         # Append to etapes.md
         with open(self.etapes_path, "a", encoding="utf-8") as f:
