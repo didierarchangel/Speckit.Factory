@@ -2109,6 +2109,7 @@ ReactDOM.createRoot(rootElement).render(
         - force les outils en devDependencies
         - force `latest` pour les outils (anti-version hallucinee)
         - force vite-plugin-eslint en devDependencies + latest
+        - force les types React quand react/react-dom sont presents
         """
         changes: list[str] = []
 
@@ -2151,6 +2152,19 @@ ReactDOM.createRoot(rootElement).render(
 
             if self._is_tooling_dependency(package_name):
                 force_dev_latest(package_name, "tooling package")
+
+        # [CRITICAL RULE] Si react/react-dom existent, forcer @types/react + @types/react-dom
+        has_react = "react" in packages
+        has_react_dom = "react-dom" in packages
+        react_stack_detected = has_react or has_react_dom
+
+        if react_stack_detected and "@types/react" not in dev_dependencies:
+            dev_dependencies["@types/react"] = "latest"
+            changes.append("@types/react: auto-added to devDependencies (react stack detected)")
+
+        if react_stack_detected and "@types/react-dom" not in dev_dependencies:
+            dev_dependencies["@types/react-dom"] = "latest"
+            changes.append("@types/react-dom: auto-added to devDependencies (react stack detected)")
 
         if changes:
             pkg_data["dependencies"] = dependencies

@@ -126,6 +126,7 @@ Lors de l'ajout de dépendances dans `package.json` ou via CLI:
 2. Utiliser systématiquement `latest` pour les outils de tooling quand la version n'est pas explicitement imposée (ex: `vite-plugin-eslint`, `eslint`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`).
 3. `vite-plugin-eslint` doit être déclaré en `devDependencies` uniquement.
 4. Les versions avec caret (`^`) ne sont autorisées que si elles existent déjà et sont confirmées dans le contexte du projet.
+5. Si `react` et/ou `react-dom` sont installés, `@types/react` et `@types/react-dom` doivent être forcés dans `devDependencies`.
 ---
 
 ## 2. RÈGLES D'ARCHITECTURE (LE SANCTUAIRE)

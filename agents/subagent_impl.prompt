@@ -526,6 +526,7 @@ Tu dois classer les paquets NPM avec rigueur :
 - **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest, cypress, vite, vite-plugin-eslint, @vitejs/plugin-react, tailwindcss, postcss, autoprefixer.
 - **TYPES** : TOUT paquet commençant par `@types/` (ex: `@types/express`) **DOIT** être dans `devDependencies`.
 - **RÈGLE TOOLING** : tous les packages de tooling en `devDependencies` doivent utiliser `latest` sauf version explicitement imposée par la Constitution.
+- **RÈGLE REACT TYPES (OBLIGATOIRE)** : si `react` et/ou `react-dom` sont présents, tu DOIS ajouter `@types/react` et `@types/react-dom` dans `devDependencies`.
 
 # RÈGLE 12.1B : TYPESCRIPT OBLIGATOIRE POUR BACKEND
 **RÈGLE ABSOLUE** : Si tu crées ou modifies `backend/package.json`, TypeScript DOIT être présent dans `devDependencies`.
