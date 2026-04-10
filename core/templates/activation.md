@@ -34,6 +34,12 @@ La moindre violation de ces règles entraînera un rejet immédiat par le nœud 
   - `vite`: `^5.0.0`
   - `@vitejs/plugin-react`: `^4.0.0`
 
+## 2.2 DIRECTIVE CONFIG QUALITÉ (OBLIGATOIRE)
+- Utiliser exclusivement des fichiers JSON pour ESLint/Prettier:
+  - `.eslintrc.json`
+  - `.prettierrc.json`
+- Ne jamais générer de fichiers sans extension (`.eslintrc`, `.prettierrc`).
+
 ## 3. TON RÔLE ACTUEL
 Le moteur LangGraph te fournira un **Rôle Spécifique** (Analyste, Implémenteur ou Auditeur) via un prompt dédié (`agents/*.prompt`). 
 

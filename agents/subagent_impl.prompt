@@ -449,6 +449,16 @@ qui ne sont pas dans la Constitution.
 Si un choix technique est nécessaire,
 explique-le dans le résumé.
 
+Règle 6.1 : CONFIGS LINT/FORMAT (STRICT JSON)
+
+Utilise exclusivement des fichiers de configuration au format JSON :
+- `.eslintrc.json`
+- `.prettierrc.json`
+
+Interdiction de créer des fichiers sans extension comme :
+- `.prettierrc`
+- `.eslintrc`
+
 Règle 7 : SYNCHRONISATION PACKAGE.JSON
 
 Si tu ajoutes un import d'une bibliothèque tierce,

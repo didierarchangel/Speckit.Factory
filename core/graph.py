@@ -1236,6 +1236,22 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
     def architecture_guard_node(self, state: AgentState) -> dict:
         import re
         task_type = state.get("target_module")
+
+        def canonicalize_rc_path(path: str) -> str:
+            p = path.replace("\\", "/").strip()
+            mapping = {
+                "frontend/.prettierrc": "frontend/.prettierrc.json",
+                "backend/.prettierrc": "backend/.prettierrc.json",
+                "frontend/.eslintrc": "frontend/.eslintrc.json",
+                "backend/.eslintrc": "backend/.eslintrc.json",
+            }
+            if p in mapping:
+                return mapping[p]
+            if p == ".prettierrc" and task_type in {"frontend", "backend"}:
+                return f"{task_type}/.prettierrc.json"
+            if p == ".eslintrc" and task_type in {"frontend", "backend"}:
+                return f"{task_type}/.eslintrc.json"
+            return p
         
         # [SAFE] SECURITE : On extrait les chemins REELS des blocs de code
         # pour eviter que le LLM ne cache un fichier non autorise en l'omettant de impact_fichiers
@@ -1244,7 +1260,10 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         extracted_paths = re.findall(file_pattern, code)
         
         # Fusionner avec impact_fichiers (fallback et complement)
-        paths = list(set(extracted_paths + state.get("impact_fichiers", [])))
+        raw_paths = list(set(extracted_paths + state.get("impact_fichiers", [])))
+        paths = [canonicalize_rc_path(p) for p in raw_paths]
+        if raw_paths != paths:
+            logger.info("[SAFE] ArchitectureGuard: chemins rc normalises vers format JSON.")
 
         try:
             if paths:
@@ -1262,7 +1281,11 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             return {
                 "arch_guard_status": "FAILED",
                 "validation_status": "REJETE",
-                "feedback_correction": f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints.",
+                "feedback_correction": (
+                    f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. "
+                    "Use JSON config files only for lint/format: `.eslintrc.json` and `.prettierrc.json`. "
+                    "Do not generate extensionless files like `.prettierrc`."
+                ),
                 "error_count": state.get("error_count", 0) + 1,
                 "last_error": error_msg
             }

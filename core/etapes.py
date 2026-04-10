@@ -653,6 +653,7 @@ class EtapeManager:
             3. PRÉSERVER le statut [x] pour toutes les étapes et sous-tâches déjà marquées comme terminées dans le PLAN EXISTANT.
             4. **RÈGLE RÉALITÉ & GOLDEN FILES** : Ne crée JAMAIS de tâche pour configurer un fichier déjà présent dans la SEMANTIC MAP s'il s'agit d'un fichier de structure géré par le framework (`tsconfig.json`, `.spec-lock.json`, `CONSTITUTION.md`). Ils sont marqués [x] dans l'Etape 01 et ne doivent plus apparaître dans les étapes suivantes.
             5. **INTERDICTION D'HALLUCINATION** : Si un fichier (ex: `package.json`, `.eslintrc.js`, `app.ts`) n'est PAS listé dans la SEMANTIC MAP, la tâche qui le concerne DOIT rester en [ ]. Ne suppose jamais qu'un standard est présent.
+            5.1 **CONFIG QUALITÉ FORMAT JSON UNIQUEMENT** : Pour ESLint/Prettier, utilise exclusivement `.eslintrc.json` et `.prettierrc.json`. Interdiction de générer `.eslintrc` ou `.prettierrc` sans extension.
             6. Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
             7. Découper le reste en étapes atomiques avec des sous-tâches actionnables (src/, routes/, models/).
             8. Utiliser un ordre de verite STRICT pour le mapping layout : `Constitution/CONSTITUTION.md` (source primaire, regles/stack) -> `Constitution/MappingComponent.md` (vision app) -> `design/constitution_design.yaml` -> `design/image_meta.json`.

@@ -66,6 +66,7 @@ __USER_INSTRUCTION__
     - `react`: `^18.0.0`
     - `vite`: `^5.0.0`
     - `@vitejs/plugin-react`: `^4.0.0`
+- Règle 6.2 : CONFIGS QUALITÉ (STRICT JSON). Rejette si l'implémenteur crée `.prettierrc` ou `.eslintrc` sans extension. Les formats valides sont `.prettierrc.json` et `.eslintrc.json`.
 - Règle 7 : FICHIERS JSON ET TRAÇABILITÉ. Les fichiers `.json` (`package.json`, `tsconfig.json`, etc.) ne supportent PAS les commentaires. NE REJETTE JAMAIS un fichier `.json` pour absence d'en-tête de traçabilité `@SPEC-KIT-TASK`. L'en-tête de traçabilité ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
 - Règle 8 : INTÉGRITÉ GLOBALE. Si les diagnostics du terminal mentionnent une erreur de build (❌ ÉCHEC), tu DOIS REJETER le code, même si l'erreur semble se situer dans un fichier que tu n'as pas modifié. Une tâche n'est terminée que si le build GLOBAL réussit.
 - Règle 9 : SCORE DE CONFORMITÉ (STRICT). Ton verdict DOIT être REJETÉ si le score de conformité est inférieur à 100. Une validation n'est possible que si la perfection est atteinte (100/100).

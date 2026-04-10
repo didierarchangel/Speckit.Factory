@@ -293,6 +293,18 @@ class FileManager:
             if path.startswith(protected):
                 logger.info(f"🛡️ Protected path passthrough (no redirection): {path}")
                 return path
+
+        # Normalisation stricte des fichiers rc sans extension (évite `.prettierrc` / `.eslintrc`)
+        rc_aliases = {
+            "frontend/.prettierrc": "frontend/.prettierrc.json",
+            "backend/.prettierrc": "backend/.prettierrc.json",
+            "frontend/.eslintrc": "frontend/.eslintrc.json",
+            "backend/.eslintrc": "backend/.eslintrc.json",
+        }
+        if path in rc_aliases:
+            normalized = rc_aliases[path]
+            logger.info(f"🛡️ Normalized rc config path: {path} -> {normalized}")
+            return normalized
         
         # Si déjà complet, retourner
         if path.startswith(('frontend/', 'backend/')):
