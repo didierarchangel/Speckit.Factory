@@ -1367,6 +1367,34 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         import re
         task_type = state.get("target_module")
 
+        def drop_forbidden_module_blocks(code_text: str, forbidden_paths: list[str]) -> str:
+            """Supprime les blocs de fichiers correspondants a des chemins hors module cible."""
+            if not code_text or not forbidden_paths:
+                return code_text
+
+            forbidden_set = {
+                p.replace("\\", "/").strip().lower()
+                for p in forbidden_paths
+                if p
+            }
+
+            block_pattern = re.compile(
+                r'(?ms)^((?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)'
+                r'([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$)(.*?)(?=^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)|\Z)'
+            )
+
+            chunks: list[str] = []
+            cursor = 0
+            for match in block_pattern.finditer(code_text):
+                start, end = match.span()
+                chunks.append(code_text[cursor:start])
+                raw_path = match.group(2).replace("\\", "/").strip().lower()
+                if raw_path not in forbidden_set:
+                    chunks.append(code_text[start:end])
+                cursor = end
+            chunks.append(code_text[cursor:])
+            return "".join(chunks)
+
         def canonicalize_rc_path(path: str) -> str:
             p = path.replace("\\", "/").strip()
             mapping = {
@@ -1445,6 +1473,20 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         paths = [canonicalize_rc_path(p) for p in raw_paths]
         if raw_paths != paths:
             logger.info("[SAFE] ArchitectureGuard: chemins rc normalises vers format JSON.")
+
+        # Pour une tache mono-module (frontend/backend), eliminer les blocs hors scope.
+        if task_type in {"frontend", "backend"}:
+            forbidden_prefix = "backend/" if task_type == "frontend" else "frontend/"
+            forbidden_paths = [p for p in paths if p.lower().startswith(forbidden_prefix)]
+            if forbidden_paths:
+                logger.warning(
+                    "[SAFE] ArchitectureGuard: %d bloc(s) hors module '%s' supprimes: %s",
+                    len(forbidden_paths),
+                    task_type,
+                    forbidden_paths,
+                )
+                code = drop_forbidden_module_blocks(code, forbidden_paths)
+                paths = [p for p in paths if p not in forbidden_paths]
 
         try:
             if paths:
@@ -4521,7 +4563,11 @@ ReactDOM.createRoot(rootElement).render(
         self.graph_builder.add_edge("vibe_finalize_node", END)
         
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node", "verify_node": "verify_node"})
-        self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})
+        self.graph_builder.add_conditional_edges(
+            "architecture_guard_node",
+            self.route_after_arch_guard,
+            {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"},
+        )
         
         self.graph_builder.add_edge("persist_node", "typescript_validate_node")
         self.graph_builder.add_edge("typescript_validate_node", "esm_compatibility_node")
