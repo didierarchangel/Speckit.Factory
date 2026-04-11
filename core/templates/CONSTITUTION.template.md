@@ -31,8 +31,9 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
   ```json
   {
     "compilerOptions": {
-      "module": "ESNext",
-      "moduleResolution": "node",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "ignoreDeprecations": "6.0",
       "target": "ES2022"
     }
   }

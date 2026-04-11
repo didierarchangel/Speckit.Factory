@@ -517,6 +517,34 @@ class FileManager:
             logger.warning(f"⚠️ Échec de la normalisation de package.json : {e}")
             return content
 
+    def _normalize_tsconfig_json(self, content: str, file_path: str = "") -> str:
+        """Met à niveau les options TypeScript dépréciées dans tsconfig*.json."""
+        import json
+        try:
+            data = json.loads(content)
+            compiler_options = data.setdefault("compilerOptions", {})
+            changed = False
+
+            module_resolution = str(compiler_options.get("moduleResolution", "")).strip().lower()
+            if module_resolution in {"node", "node10", "classic"}:
+                compiler_options["moduleResolution"] = "NodeNext"
+                # Avec NodeNext, TypeScript attend aussi module=NodeNext.
+                compiler_options["module"] = "NodeNext"
+                changed = True
+
+            # Réduit le bruit TS6 si un ancien template passe encore.
+            if "ignoreDeprecations" not in compiler_options:
+                compiler_options["ignoreDeprecations"] = "6.0"
+                changed = True
+
+            if changed:
+                logger.info(f"🧙‍♂️ tsconfig normalisé ({file_path or 'tsconfig'}): moduleResolution moderne + ignoreDeprecations.")
+                return json.dumps(data, indent=2)
+            return content
+        except Exception as e:
+            logger.warning(f"⚠️ Échec de la normalisation de tsconfig ({file_path or 'unknown'}): {e}")
+            return content
+
     def extract_and_write(self, code: str) -> list:
         """Extrait les fichiers du code (format Spec-Kit) et les écrit sur le disque avec filtre Golden Template.
         
@@ -606,6 +634,10 @@ class FileManager:
                     # --- NORMALISATION DES DÉPENDANCES ---
                     if not is_golden and "package.json" in file_path_str.lower():
                         final_content = self._normalize_package_json(final_content)
+
+                    # --- NORMALISATION TSCONFIG (migration node/node10 -> NodeNext) ---
+                    if file_path_str.lower().endswith(".json") and "tsconfig" in file_path_str.lower():
+                        final_content = self._normalize_tsconfig_json(final_content, file_path_str)
 
                     # Nettoyage profond (marqueurs FIN, backticks markdown)
                     final_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', final_content)
