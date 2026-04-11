@@ -10,6 +10,7 @@ class ArchitectureGuard:
         "backend/src",
         "backend/prisma",
         "backend/scripts",
+        "backend/README.md",
         "backend/package.json",
         "backend/tsconfig.json",
         "backend/tsconfig.test.json",
@@ -32,6 +33,7 @@ class ArchitectureGuard:
         "frontend/src",
         "frontend/public",
         "frontend/cypress",
+        "frontend/README.md",
         "frontend/package.json",
         "frontend/tsconfig.json",
         "frontend/tsconfig.test.json",
@@ -84,7 +86,7 @@ class ArchitectureGuard:
         validated = []
         for path in file_paths:
             # Nettoyage du chemin
-            path = path.replace("\\", "/")
+            path = self._normalize_aliases(path.replace("\\", "/"))
             
             # 🛡️ GLOBAL FILES : Fichiers système autorisés partout à la racine
             is_global = False
@@ -116,6 +118,20 @@ class ArchitectureGuard:
             validated.append(path)
 
         return validated
+
+    def _normalize_aliases(self, path: str) -> str:
+        """Normalise les prefixes de chemin frequemment hallucines."""
+        p = (path or "").strip()
+        # Alias toleres: front/* -> frontend/*, back/* -> backend/*
+        if p == "front":
+            return "frontend"
+        if p.startswith("front/"):
+            return "frontend/" + p[len("front/"):]
+        if p == "back":
+            return "backend"
+        if p.startswith("back/"):
+            return "backend/" + p[len("back/"):]
+        return p
 
     def _validate_backend(self, path: str):
         # 🛡️ GLOBAL ALLOWLIST : Fichiers système autorisés partout (ex: GitHub Actions)

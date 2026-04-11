@@ -1397,6 +1397,16 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
 
         def canonicalize_rc_path(path: str) -> str:
             p = path.replace("\\", "/").strip()
+            # Alias frequents produits par le modele
+            if p == "front":
+                p = "frontend"
+            elif p.startswith("front/"):
+                p = "frontend/" + p[len("front/"):]
+            elif p == "back":
+                p = "backend"
+            elif p.startswith("back/"):
+                p = "backend/" + p[len("back/"):]
+
             mapping = {
                 "frontend/.prettierrc": "frontend/.prettierrc.json",
                 "backend/.prettierrc": "backend/.prettierrc.json",
