@@ -3131,6 +3131,22 @@ ReactDOM.createRoot(rootElement).render(
                     logger.info("[SAFE] Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVE.")
                     verifier_status = "APPROUVE"
 
+            # [SAFE] DETERMINISTIC GATE:
+            # Si tous les signaux techniques sont au vert, un rejet LLM est considéré non-bloquant.
+            deterministic_ok = self._is_deterministic_audit_success(
+                missing_tasks=missing,
+                structure_valid=structure_valid,
+                typescript_status=typescript_status,
+                has_build_errors=has_build_errors,
+            )
+            if verifier_status == "REJETE" and deterministic_ok:
+                logger.warning(
+                    "[SAFE] Deterministic audit gate override: checklist complete + structure OK + TS OK + build OK. "
+                    "LLM rejection treated as non-blocking."
+                )
+                verifier_status = "APPROUVE"
+                generation_failed = False
+
             if generation_failed or not structure_valid or verifier_status == "REJETE":
                 if missing > 0:
                     logger.warning(f"[WARN] Audit REJETE: Il manque encore des fichiers obligatoires.")
@@ -3549,6 +3565,30 @@ ReactDOM.createRoot(rootElement).render(
             "no error",
         ]
         return any(m in txt for m in markers)
+
+    def _is_deterministic_audit_success(
+        self,
+        *,
+        missing_tasks: int,
+        structure_valid: bool,
+        typescript_status: str,
+        has_build_errors: bool,
+    ) -> bool:
+        """Vrai si les signaux techniques déterministes sont tous au vert.
+
+        Ce garde-fou protège contre les faux rejets LLM subjectifs quand:
+        - la checklist est complète,
+        - la structure est valide,
+        - TypeScript est valide (ou non applicable),
+        - aucun échec build n'est détecté.
+        """
+        ts_ok_values = {"PASSED", "SKIPPED", "NO_MODULES", ""}
+        return (
+            missing_tasks == 0
+            and structure_valid
+            and str(typescript_status or "").upper() in ts_ok_values
+            and not has_build_errors
+        )
 
     def _extract_required_files(self, checklist_text: str) -> List[str]:
         """Extrait les chemins de fichiers obligatoires mentionnes dans la checklist.
