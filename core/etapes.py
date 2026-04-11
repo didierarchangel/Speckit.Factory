@@ -1619,12 +1619,17 @@ class EtapeManager:
         lowered = token.lower()
         if lowered.startswith("module_"):
             return True
+
+        compact = re.sub(r"[^a-z0-9]", "", lowered)
+        if compact in {"chatmessage", "chatmessages", "billing", "billings"}:
+            return True
+
         # Tokens module typiques des plans MongoDB/Domain Modeling.
         semantic_aliases = {
             "doctor", "doctors", "patient", "patients", "user", "users",
-            "medication", "medications", "chat", "chat_message", "chatmessage",
+            "medication", "medications", "chat", "chat_message", "chat_messages", "chatmessage", "chatmessages",
             "archive", "archives", "consultation", "consultations",
-            "prescription", "prescriptions", "billing", "alert", "alerts",
+            "prescription", "prescriptions", "billing", "billings", "alert", "alerts",
         }
         if lowered in semantic_aliases:
             return True
