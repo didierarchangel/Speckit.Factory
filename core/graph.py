@@ -44,6 +44,21 @@ DEPRECATED_PACKAGES = {
     "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
 }
 
+# Packages qui embarquent deja leurs types TypeScript.
+# Evite d'injecter des @types/* inutiles (et parfois casses).
+BUNDLED_TYPES_PACKAGES = {
+    "axios",
+    "dotenv",
+    "mongoose",
+}
+
+# @types/* obsoletes a nettoyer si detectes dans package.json.
+DEPRECATED_TYPES_PACKAGES = {
+    "@types/axios",
+    "@types/dotenv",
+    "@types/mongoose",
+}
+
 # --- Packages de tooling a forcer en devDependencies + latest ---
 TOOLING_PACKAGES = {
     "typescript",
@@ -237,6 +252,8 @@ class AgentState(TypedDict):
     esm_resolver_status: str  # ESM import resolver status
     typescript_errors: List[dict]  # TypeScript compilation errors
     typescript_validation_status: str  # TypeScript validation result
+    npm_install_failed: bool  # npm install failed in install_deps_node
+    npm_install_error: str  # npm install stderr summary
     
     # Snapshot tracking for diff management
     snapshot_before: dict  # Project state before persistence
@@ -2237,12 +2254,14 @@ ReactDOM.createRoot(rootElement).render(
     
     def _get_types_for_package(self, pkg_name: str) -> Optional[str]:
         """Retourne le nom du package @types/* correspondant, ou None."""
+        if pkg_name in BUNDLED_TYPES_PACKAGES:
+            return None
+
         # Mapping des packages populaires a leur @types equivalents
         types_mapping = {
             "react": "@types/react",
             "react-dom": "@types/react-dom",
             "react-router-dom": "@types/react-router-dom",
-            "axios": "@types/axios",
             "lodash": "@types/lodash",
             "express": "@types/express",
             "node": "@types/node",
@@ -2251,7 +2270,6 @@ ReactDOM.createRoot(rootElement).render(
             "morgan": "@types/morgan",
             "bcryptjs": "@types/bcryptjs",
             "jsonwebtoken": "@types/jsonwebtoken",
-            "dotenv": "@types/dotenv",
         }
         return types_mapping.get(pkg_name)
 
@@ -2308,6 +2326,32 @@ ReactDOM.createRoot(rootElement).render(
             return True
         return any(pkg_name.startswith(prefix) for prefix in TOOLING_PREFIXES)
 
+    def _build_install_target(self, pkg_name: str, force_latest: bool) -> str:
+        """
+        Construit une cible npm install robuste.
+        Evite les specs invalides du type `axios@@latest`.
+        """
+        spec = (pkg_name or "").strip()
+        if not spec:
+            return spec
+
+        # Normalise les derivees les plus frequentes.
+        spec = re.sub(r"@+latest$", "@latest", spec)
+        spec = re.sub(r"@+$", "", spec)
+
+        # Detecte si une version est deja explicite dans le spec.
+        has_explicit_version = False
+        if spec.startswith("@"):
+            slash_idx = spec.find("/")
+            at_after_scope = spec.find("@", slash_idx + 1) if slash_idx != -1 else -1
+            has_explicit_version = at_after_scope != -1
+        else:
+            has_explicit_version = "@" in spec
+
+        if force_latest and not has_explicit_version:
+            return f"{spec}@latest"
+        return spec
+
     def _sanitize_package_manifest(self, pkg_path: Path) -> list[str]:
         """
         Nettoie package.json avant installation:
@@ -2336,6 +2380,15 @@ ReactDOM.createRoot(rootElement).render(
             dev_dependencies = {}
 
         packages = set(dependencies.keys()) | set(dev_dependencies.keys())
+
+        # Nettoyage des @types obsoletes/stub qui cassent des installs.
+        for deprecated_types_pkg in DEPRECATED_TYPES_PACKAGES:
+            if deprecated_types_pkg in dependencies:
+                dependencies.pop(deprecated_types_pkg, None)
+                changes.append(f"{deprecated_types_pkg}: removed from dependencies (deprecated types package)")
+            if deprecated_types_pkg in dev_dependencies:
+                dev_dependencies.pop(deprecated_types_pkg, None)
+                changes.append(f"{deprecated_types_pkg}: removed from devDependencies (deprecated types package)")
 
         def force_version(
             package_name: str, target_section: str, version: str, reason: str
@@ -2646,6 +2699,8 @@ ReactDOM.createRoot(rootElement).render(
         from utils.scanner import SemanticScanner
         
         logger.info("? Installation des dependances (npm install)...")
+        state["npm_install_failed"] = False
+        state["npm_install_error"] = ""
 
         if self._is_structure_only_task(
             state.get("target_task", ""),
@@ -2761,6 +2816,9 @@ ReactDOM.createRoot(rootElement).render(
         # --- Verification prealable avec npm view ---
         valid_packages = []
         for pkg in filtered_missing:
+            if pkg in DEPRECATED_TYPES_PACKAGES:
+                logger.info(f"[SKIP] Package ignore (types obsolete): {pkg}")
+                continue
             try:
                 assert npm_path is not None, "npm_path should not be None (guarded above)"
                 view_res = subprocess.run(
@@ -2785,10 +2843,14 @@ ReactDOM.createRoot(rootElement).render(
             logger.warning("[RUN] Installation de base (npm install global) car node_modules est absent...")
             install_args = [npm_path, "install"]
         else:
-            install_targets = [
-                f"{pkg}@latest" if self._is_tooling_dependency(pkg) else pkg
-                for pkg in valid_packages
-            ]
+            install_targets = []
+            for pkg in valid_packages:
+                target = self._build_install_target(
+                    pkg_name=pkg,
+                    force_latest=self._is_tooling_dependency(pkg),
+                )
+                if target:
+                    install_targets.append(target)
             logger.warning(f"[RUN] Installation de {len(valid_packages)} modules valides: {install_targets}...")
             install_args = [npm_path, "install"] + install_targets
         
@@ -2814,9 +2876,17 @@ ReactDOM.createRoot(rootElement).render(
                 if result.stderr:
                     logger.error(f"   Diagnostic npm: {result.stderr.strip()}")
                 state["missing_modules"] = filtered_missing
+                state["npm_install_failed"] = True
+                state["npm_install_error"] = (result.stderr or result.stdout or "").strip()
+                state["feedback_correction"] = (
+                    "Dependency installation failed. Resolve npm error before buildfix. "
+                    f"Details: {(result.stderr or result.stdout or '').strip()[:300]}"
+                )
                 return state  # type: ignore[return-value]
             else:
                 logger.info(f"[OK] Commande npm install terminee avec succes.")
+                state["npm_install_failed"] = False
+                state["npm_install_error"] = ""
                 # Verification post-install physique
                 if valid_packages:
                     installed_physically = []
@@ -2846,6 +2916,8 @@ ReactDOM.createRoot(rootElement).render(
         except Exception as e:
             logger.error(f"[WARN] Echec installation modules {filtered_missing}: {e}")
             state["missing_modules"] = filtered_missing
+            state["npm_install_failed"] = True
+            state["npm_install_error"] = str(e)
 
         return state  # type: ignore[return-value]
 
@@ -3980,6 +4052,10 @@ ReactDOM.createRoot(rootElement).render(
         
         state["dependency_cycles"] = dep_cycles + 1
         logger.debug(f"[STAT] Dependency cycle {state['dependency_cycles']}/{MAX_DEPENDENCY_CYCLES}")
+
+        if state.get("npm_install_failed", False):
+            logger.error("[STOP] npm install failed. Skipping diagnostic/buildfix loop and routing to verify_node.")
+            return "verify_node"
         
         # Si scanner a trouve 0 modules -> pas de raison de re-scanner
         scanner_missing = state.get("scanner_missing_modules", [])
@@ -4012,6 +4088,10 @@ ReactDOM.createRoot(rootElement).render(
         
         state["graph_steps"] = graph_steps + 1
         logger.debug(f"[STAT] Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
+
+        if state.get("npm_install_failed", False):
+            logger.error("[STOP] npm install failure detected in state. buildfix is not applicable, route to verify_node.")
+            return "verify_node"
         
         # [SAFE] PROTECTION NIVEAU 1B: Detection de boucle infinie (meme etat repete)
         current_state_key = f"{state.get('validation_status', 'UNKNOWN')}|{len(state.get('missing_modules', []))}|{state.get('error_count', 0)}"
